@@ -1,0 +1,149 @@
+{
+  "source": "assets/branding/source/agr-logo.png",
+  "sourceSha256": "23d9b8d4ce22a929972abd1533b24f4d3f5863791595e36e33a4fe46d25abc60",
+  "subject": "emblem",
+  "emblemCropBox": {
+    "left": 405,
+    "top": 117,
+    "width": 1275,
+    "height": 1202
+  },
+  "generator": "scripts/generate-icons.mjs",
+  "outputs": [
+    {
+      "file": "apps/web/app/favicon.ico",
+      "size": "16x16,32x32,48x48",
+      "bytes": 4835
+    },
+    {
+      "file": "apps/web/app/icon.png",
+      "size": "192x192",
+      "bytes": 22103
+    },
+    {
+      "file": "apps/web/app/apple-icon.png",
+      "size": "180x180",
+      "bytes": 17058
+    },
+    {
+      "file": "apps/web/public/icons/icon-192.png",
+      "size": "192x192",
+      "bytes": 20873
+    },
+    {
+      "file": "apps/web/public/icons/icon-512.png",
+      "size": "512x512",
+      "bytes": 77556
+    },
+    {
+      "file": "apps/web/public/icons/maskable-512.png",
+      "size": "512x512",
+      "bytes": 49533
+    },
+    {
+      "file": "apps/web/public/brand/agr-logo.png",
+      "size": "640x640",
+      "bytes": 120813
+    },
+    {
+      "file": "assets/branding/generated/app-icon-1024.png",
+      "size": "1024x1024",
+      "bytes": 174865
+    },
+    {
+      "file": "assets/branding/generated/android/playstore-icon-512.png",
+      "size": "512x512",
+      "bytes": 71361
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-mdpi/ic_launcher.png",
+      "size": "48x48",
+      "bytes": 2454
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-mdpi/ic_launcher_round.png",
+      "size": "48x48",
+      "bytes": 2169
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "size": "108x108",
+      "bytes": 3263
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-hdpi/ic_launcher.png",
+      "size": "72x72",
+      "bytes": 4601
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-hdpi/ic_launcher_round.png",
+      "size": "72x72",
+      "bytes": 4060
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "size": "162x162",
+      "bytes": 6168
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xhdpi/ic_launcher.png",
+      "size": "96x96",
+      "bytes": 7260
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xhdpi/ic_launcher_round.png",
+      "size": "96x96",
+      "bytes": 6145
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "size": "216x216",
+      "bytes": 9647
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xxhdpi/ic_launcher.png",
+      "size": "144x144",
+      "bytes": 13406
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "size": "144x144",
+      "bytes": 11212
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "size": "324x324",
+      "bytes": 18002
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xxxhdpi/ic_launcher.png",
+      "size": "192x192",
+      "bytes": 20873
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "size": "192x192",
+      "bytes": 17337
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "size": "432x432",
+      "bytes": 27735
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "size": "xml",
+      "bytes": 268
+    },
+    {
+      "file": "assets/branding/generated/android/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "size": "xml",
+      "bytes": 268
+    },
+    {
+      "file": "assets/branding/generated/android/res/values/ic_launcher_background.xml",
+      "size": "xml",
+      "bytes": 121
+    }
+  ]
+}

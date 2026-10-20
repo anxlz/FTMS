@@ -1,0 +1,31 @@
+{
+  "name": "ftms",
+  "private": true,
+  "description": "Field Training Management System — Faculty of Agriculture, Ain Shams University",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "verify": "turbo run lint typecheck build test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "icons": "node scripts/generate-icons.mjs",
+    "db:generate": "pnpm --filter @ftms/api prisma:generate",
+    "db:migrate": "pnpm --filter @ftms/api prisma:migrate:dev",
+    "db:deploy": "pnpm --filter @ftms/api prisma:migrate:deploy",
+    "storage:provision": "pnpm --filter @ftms/api storage:provision"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "sharp": "^0.35.5",
+    "turbo": "^2.11.9",
+    "typescript": "~6.0.3"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@ftms/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared Zod schemas, types, and pure business-logic helpers for the FTMS web app, API, and future mobile client.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@ftms/eslint-config": "workspace:*",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.39.5",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,132 @@
+/* Brand palette sampled from the Faculty of Agriculture logo (see @ftms/core BRAND_COLORS). */
+:root {
+  --brand-blue: #00507d;
+  --brand-navy: #083f5f;
+  --brand-gold: #dbc35c;
+  --surface: #ffffff;
+  --page: #f4f7f9;
+  --text: #0f2533;
+  --muted: #4a6272;
+  --ok: #17663a;
+  --warn: #8a5a00;
+  --error: #a3261b;
+
+  color-scheme: light;
+  font-family:
+    'Segoe UI', 'Noto Sans Arabic', 'Noto Naskh Arabic', Tahoma, 'Helvetica Neue', Arial, sans-serif;
+  /* Western digits in both languages (§18.1). */
+  font-variant-numeric: lining-nums;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--page);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+.card {
+  width: min(100%, 40rem);
+  background: var(--surface);
+  border-radius: 1rem;
+  border-block-start: 6px solid var(--brand-blue);
+  box-shadow: 0 10px 30px rgb(8 63 95 / 0.08);
+  padding: 2rem clamp(1.25rem, 5vw, 3rem) 2.5rem;
+  text-align: center;
+}
+
+.logo {
+  width: min(16rem, 70%);
+  height: auto;
+}
+
+h1 {
+  margin: 0.5rem 0 0;
+  color: var(--brand-navy);
+  font-size: clamp(1.5rem, 4.5vw, 2.1rem);
+  font-weight: 700;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--brand-blue);
+  font-size: 1.1rem;
+}
+
+.english {
+  margin-block-start: 1rem;
+  color: var(--muted);
+}
+
+.english p {
+  margin: 0;
+}
+
+.english-title {
+  color: var(--brand-navy);
+  font-weight: 600;
+}
+
+.rule {
+  width: 4rem;
+  margin: 1.5rem auto;
+  border: 0;
+  border-block-start: 3px solid var(--brand-gold);
+}
+
+.phase {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.phase span {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.status {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid currentColor;
+  text-align: start;
+}
+
+.status-symbol {
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.status-en {
+  display: block;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.status-up {
+  color: var(--ok);
+}
+
+.status-down {
+  color: var(--error);
+}
+
+.status-not_configured {
+  color: var(--warn);
+}

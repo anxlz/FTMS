@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, build, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      # Throwaway Postgres (Supabase runs Postgres 17) for migrations + e2e tests.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ftms
+          POSTGRES_PASSWORD: ftms
+          POSTGRES_DB: ftms_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ftms -d ftms_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://ftms:ftms@localhost:5432/ftms_ci
+      NEXT_TELEMETRY_DISABLED: '1'
+      TURBO_TELEMETRY_DISABLED: '1'
+      PRISMA_HIDE_UPDATE_MESSAGE: '1'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Apply migrations to the CI database
+        run: pnpm db:deploy
+
+      - name: End-to-end tests (real Postgres)
+        run: pnpm test:e2e
+
+      - name: Icons match the committed logo
+        run: |
+          pnpm icons
+          git diff --exit-code -- apps/web/app apps/web/public assets/branding

@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+pnpm-lock.yaml
+apps/api/src/generated
+apps/api/prisma/migrations
+assets/branding/generated
+docs/master-prompt.md

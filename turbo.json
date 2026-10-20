@@ -1,0 +1,50 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["tsconfig.base.json"],
+  "globalEnv": ["NODE_ENV", "APP_TIMEZONE"],
+  "globalPassThroughEnv": ["PRISMA_*", "NEXT_TELEMETRY_DISABLED", "TURBO_TELEMETRY_DISABLED"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "prisma:generate"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.spec.ts", "!**/*.test.ts", "!test/**", "!.env*"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["NEXT_PUBLIC_API_URL"]
+    },
+    "prisma:generate": {
+      "inputs": ["prisma/schema.prisma", "prisma.config.ts"],
+      "outputs": ["src/generated/prisma/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "prisma:generate"]
+    },
+    "lint": {
+      "dependsOn": ["^build", "prisma:generate"]
+    },
+    "test": {
+      "dependsOn": ["^build", "prisma:generate"],
+      "outputs": []
+    },
+    "test:e2e": {
+      "dependsOn": ["^build", "prisma:generate"],
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL", "DIRECT_URL"]
+    },
+    "dev": {
+      "dependsOn": ["^build", "prisma:generate"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "PORT",
+        "DATABASE_URL",
+        "DIRECT_URL",
+        "SUPABASE_*",
+        "UPSTASH_*",
+        "SMTP_*",
+        "JWT_*",
+        "QR_HMAC_SECRET",
+        "NEXT_PUBLIC_API_URL"
+      ]
+    }
+  }
+}

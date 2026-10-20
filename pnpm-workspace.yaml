@@ -1,0 +1,17 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm 10 blocks dependency lifecycle scripts by default. Only these packages
+# are allowed to run install scripts (native binaries / engine downloads).
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/engines'
+  - esbuild
+  - prisma
+  - sharp
+  - unrs-resolver
+
+# Install scripts deliberately skipped (prebuilt binaries are used instead).
+ignoredBuiltDependencies:
+  - '@parcel/watcher'

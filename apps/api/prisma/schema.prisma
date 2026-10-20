@@ -1,0 +1,19 @@
+// FTMS database schema — Supabase Postgres via Prisma ORM.
+//
+// Phase 0 intentionally defines no models: the core entities (§16 of the master
+// prompt) are introduced in Phase 1 through regular migrations.
+//
+// Connection URLs are not declared here. Prisma 7 reads the CLI connection from
+// `prisma.config.ts`, and the runtime connection is passed to the driver adapter
+// in `src/prisma/prisma.service.ts`.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
