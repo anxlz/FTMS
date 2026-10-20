@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
+  addDays,
+  type CalendarResponse,
   type Group,
   type ListProfileChangesResponse,
   type ListStudentsResponse,
@@ -8,11 +10,17 @@ import {
   type ListVerificationsResponse,
   type MeResponse,
   type OwnStudentProfile,
+  PROGRAM_TIME_ZONE,
   ROLES,
+  todayIn,
 } from '@ftms/core';
-import { getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
+import { timeRange } from '@/components/month-calendar';
 import { apiFetch } from '@/lib/api';
 import { accessToken, requireUser } from '@/lib/auth/session';
+import { dayValue } from '@/lib/calendar';
+
+const UPCOMING_DAYS = 14;
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('nav'))('dashboard') };
@@ -23,8 +31,10 @@ export default async function DashboardPage() {
   const t = await getTranslations();
   const token = await accessToken();
   const has = (p: MeResponse['permissions'][number]) => user.permissions.includes(p);
-  // Real counts only — summary cards for visits/attendance arrive with their phases.
-  const [counts, records, own] = await Promise.all([
+  const format = await getFormatter();
+  const today = todayIn(PROGRAM_TIME_ZONE);
+  // Real data only — attendance summaries arrive with Phase 4.
+  const [counts, records, own, upcoming] = await Promise.all([
     has('users.read') ? accountCounts(token) : null,
     has('students.read')
       ? studentCounts(token, has('profile_changes.decide'), has('students.manage'))
@@ -32,7 +42,14 @@ export default async function DashboardPage() {
     user.role === 'STUDENT'
       ? apiFetch<OwnStudentProfile>('/me/student', { accessToken: token })
       : null,
+    apiFetch<CalendarResponse>(
+      `/calendar?from=${today}&to=${addDays(today, UPCOMING_DAYS)}&status=SCHEDULED`,
+      { accessToken: token },
+    ),
   ]);
+  const nextVisits = upcoming.ok
+    ? upcoming.data.visits.filter((v) => v.phase !== 'FINISHED').slice(0, 5)
+    : [];
 
   return (
     <div className="stack-lg">
@@ -67,6 +84,33 @@ export default async function DashboardPage() {
           </div>
         </dl>
       </section>
+
+      {upcoming.ok && (
+        <section className="card stack" aria-labelledby="upcoming-title">
+          <div className="row-between">
+            <h2 id="upcoming-title">{t('dashboard.upcomingTitle', { days: UPCOMING_DAYS })}</h2>
+            <Link href="/calendar">{t('dashboard.openCalendar')}</Link>
+          </div>
+          {nextVisits.length === 0 ? (
+            <p className="empty">{t('dashboard.noUpcoming')}</p>
+          ) : (
+            <ul className="agenda">
+              {nextVisits.map((v) => (
+                <li key={v.id}>
+                  <Link href={`/visits/${v.id}`}>
+                    <strong>{v.title}</strong>
+                  </Link>
+                  <p className="muted small">
+                    {format.dateTime(dayValue(v.date), { dateStyle: 'full' })} ·{' '}
+                    <span dir="ltr">{timeRange(v)}</span>
+                    {v.locationName ? ` · ${v.locationName}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {records && (
         <section className="card" aria-labelledby="students-title">

@@ -53,8 +53,9 @@ export class ImportsController {
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
-      // In memory only (no temp files on serverless); one file, bounded size.
+      // In memory only (no temp files on serverless); one file, bounded size; UTF-8 names.
       limits: { fileSize: IMPORT_MAX_FILE_BYTES, files: 1, fields: 5, parts: 6 },
+      defParamCharset: 'utf8',
     }),
   )
   upload(

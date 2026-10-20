@@ -3,6 +3,8 @@
 // Phase 1: identity, authorization and audit foundation (§16).
 // Phase 2: student records, training groups and memberships, spreadsheet
 // imports, account-verification and profile-change requests.
+// Phase 3: training program settings, recurring schedules and exceptions,
+// visits with their groups and files, in-app notifications.
 // Later feature entities (visits, attendance, tickets, swaps, …) arrive with the
 // phase that implements them, each through its own migration.
 //
@@ -79,6 +81,16 @@ model User {
   verificationsDecided    StudentVerificationRequest[] @relation("VerificationDecidedBy")
   profileChangesRequested ProfileChangeRequest[]       @relation("ProfileChangeRequestedBy")
   profileChangesDecided   ProfileChangeRequest[]       @relation("ProfileChangeDecidedBy")
+
+  programsCreated   TrainingProgram[]   @relation("ProgramCreatedBy")
+  schedulesCreated  TrainingSchedule[]  @relation("ScheduleCreatedBy")
+  schedulesEnded    TrainingSchedule[]  @relation("ScheduleEndedBy")
+  exceptionsCreated ScheduleException[] @relation("ExceptionCreatedBy")
+  visitsCreated     TrainingVisit[]     @relation("VisitCreatedBy")
+  visitsUpdated     TrainingVisit[]     @relation("VisitUpdatedBy")
+  visitsCancelled   TrainingVisit[]     @relation("VisitCancelledBy")
+  visitFiles        VisitFile[]         @relation("VisitFileUploadedBy")
+  notifications     Notification[]      @relation("NotificationRecipient")
 
   @@index([role, status])
   @@map("users")
@@ -274,8 +286,10 @@ model TrainingGroup {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  createdBy   User?             @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  memberships GroupMembership[]
+  createdBy      User?             @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  memberships    GroupMembership[]
+  scheduleGroups ScheduleGroup[]
+  visitGroups    VisitGroup[]
 
   @@map("training_groups")
 }
@@ -414,4 +428,217 @@ model ProfileChangeRequest {
   @@index([status, createdAt])
   @@index([studentId, createdAt])
   @@map("profile_change_requests")
+}
+
+/**
+ * ═══════════════════════════ Phase 3 ═══════════════════════════
+ */
+
+/// Training program settings (§6.1, §8.1, §11). Exactly one program is current
+/// (partial unique index). Defaults (12 weeks, 2 absences, 15/15/60 minutes) are
+/// only pre-filled by the settings form — every value here is configurable.
+/// Timing values are copied into each visit when it is created (§8.1).
+model TrainingProgram {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  name                 String   @db.VarChar(200)
+  startDate            DateTime @map("start_date") @db.Date
+  durationWeeks        Int      @map("duration_weeks")
+  /// IANA zone of every wall-clock date/time in the program (§16.2).
+  timeZone             String   @default("Africa/Cairo") @map("time_zone") @db.VarChar(64)
+  checkInOpensMinutes  Int      @map("check_in_opens_minutes")
+  graceMinutes         Int      @map("grace_minutes")
+  checkInClosesMinutes Int      @map("check_in_closes_minutes")
+  allowedAbsences      Int      @map("allowed_absences")
+  isCurrent            Boolean  @default(true) @map("is_current")
+  createdById          String?  @map("created_by_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  createdBy  User?               @relation("ProgramCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  schedules  TrainingSchedule[]
+  exceptions ScheduleException[]
+  visits     TrainingVisit[]
+
+  @@map("training_programs")
+}
+
+/// A recurring weekly schedule (§6.1, §11.2): the definition only. Its sessions
+/// are materialized as `training_visits` rows (`schedule_id` + `occurrence_date`),
+/// so a single occurrence can be changed without altering the definition.
+model TrainingSchedule {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  programId    String    @map("program_id") @db.Uuid
+  title        String    @db.VarChar(200)
+  /// 0 = Sunday … 6 = Saturday.
+  weekdays     Int[]     @db.SmallInt
+  startTime    DateTime  @map("start_time") @db.Time(0)
+  endTime      DateTime? @map("end_time") @db.Time(0)
+  startsOn     DateTime  @map("starts_on") @db.Date
+  endsOn       DateTime  @map("ends_on") @db.Date
+  locationName String?   @map("location_name") @db.VarChar(200)
+  endedAt      DateTime? @map("ended_at") @db.Timestamptz(3)
+  endedById    String?   @map("ended_by_id") @db.Uuid
+  endReason    String?   @map("end_reason") @db.VarChar(500)
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  program    TrainingProgram     @relation(fields: [programId], references: [id], onDelete: Restrict)
+  createdBy  User?               @relation("ScheduleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  endedBy    User?               @relation("ScheduleEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+  groups     ScheduleGroup[]
+  visits     TrainingVisit[]
+  exceptions ScheduleException[]
+
+  @@index([programId, endedAt])
+  @@map("training_schedules")
+}
+
+/// Groups a recurring schedule applies to (§6.1 group-specific schedules).
+model ScheduleGroup {
+  scheduleId String @map("schedule_id") @db.Uuid
+  groupId    String @map("group_id") @db.Uuid
+
+  schedule TrainingSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  group    TrainingGroup    @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@id([scheduleId, groupId])
+  @@index([groupId])
+  @@map("schedule_groups")
+}
+
+/// A day without training (§6.1): for one schedule, or for every schedule when
+/// `scheduleId` is null. The sessions it cancelled point back to it, so removing
+/// the exception restores exactly those sessions.
+model ScheduleException {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  programId   String   @map("program_id") @db.Uuid
+  date        DateTime @db.Date
+  scheduleId  String?  @map("schedule_id") @db.Uuid
+  reason      String   @db.VarChar(500)
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  program         TrainingProgram   @relation(fields: [programId], references: [id], onDelete: Restrict)
+  schedule        TrainingSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  createdBy       User?             @relation("ExceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelledVisits TrainingVisit[]
+
+  @@index([programId, date])
+  @@map("schedule_exceptions")
+}
+
+enum VisitStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+/// A training visit (§6.3): one-off, or one occurrence of a recurring schedule.
+/// `date` + `startTime` are wall-clock values in the program's time zone; the UTC
+/// instants `startsAt`/`endsAt` are derived from them by the API (§16.2).
+model TrainingVisit {
+  id                     String      @id @default(uuid(7)) @db.Uuid
+  programId              String      @map("program_id") @db.Uuid
+  scheduleId             String?     @map("schedule_id") @db.Uuid
+  occurrenceDate         DateTime?   @map("occurrence_date") @db.Date
+  /// Edited individually: later schedule changes leave it alone.
+  detached               Boolean     @default(false)
+  title                  String      @db.VarChar(200)
+  description            String?
+  date                   DateTime    @db.Date
+  startTime              DateTime    @map("start_time") @db.Time(0)
+  endTime                DateTime?   @map("end_time") @db.Time(0)
+  startsAt               DateTime    @map("starts_at") @db.Timestamptz(3)
+  endsAt                 DateTime?   @map("ends_at") @db.Timestamptz(3)
+  locationName           String?     @map("location_name") @db.VarChar(200)
+  latitude               Float?
+  longitude              Float?
+  mapUrl                 String?     @map("map_url") @db.VarChar(2048)
+  checkInOpensMinutes    Int         @map("check_in_opens_minutes")
+  graceMinutes           Int         @map("grace_minutes")
+  checkInClosesMinutes   Int         @map("check_in_closes_minutes")
+  timingOverridden       Boolean     @default(false) @map("timing_overridden")
+  status                 VisitStatus @default(SCHEDULED)
+  cancelReason           String?     @map("cancel_reason") @db.VarChar(500)
+  cancelledAt            DateTime?   @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById          String?     @map("cancelled_by_id") @db.Uuid
+  cancelledByExceptionId String?     @map("cancelled_by_exception_id") @db.Uuid
+  createdById            String?     @map("created_by_id") @db.Uuid
+  updatedById            String?     @map("updated_by_id") @db.Uuid
+  createdAt              DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  program              TrainingProgram    @relation(fields: [programId], references: [id], onDelete: Restrict)
+  schedule             TrainingSchedule?  @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  cancelledByException ScheduleException? @relation(fields: [cancelledByExceptionId], references: [id], onDelete: SetNull)
+  createdBy            User?              @relation("VisitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy            User?              @relation("VisitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cancelledBy          User?              @relation("VisitCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  groups               VisitGroup[]
+  files                VisitFile[]
+
+  @@unique([scheduleId, occurrenceDate])
+  @@index([startsAt])
+  @@index([date])
+  @@map("training_visits")
+}
+
+/// Groups a visit concerns (§6.2). Every visit has at least one (deferred trigger).
+model VisitGroup {
+  visitId String @map("visit_id") @db.Uuid
+  groupId String @map("group_id") @db.Uuid
+
+  visit TrainingVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  group TrainingGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@id([visitId, groupId])
+  @@index([groupId, visitId])
+  @@map("visit_groups")
+}
+
+enum VisitFileKind {
+  COVER
+  DOCUMENT
+}
+
+/// A visit's cover photo (at most one) or attached document, kept in a private
+/// bucket and served through short-lived signed links (§16.3).
+model VisitFile {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  visitId      String        @map("visit_id") @db.Uuid
+  kind         VisitFileKind
+  bucket       String        @db.VarChar(64)
+  storagePath  String        @map("storage_path") @db.VarChar(512)
+  fileName     String        @map("file_name") @db.VarChar(255)
+  contentType  String        @map("content_type") @db.VarChar(127)
+  sizeBytes    Int           @map("size_bytes")
+  uploadedById String?       @map("uploaded_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  visit      TrainingVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  uploadedBy User?         @relation("VisitFileUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@unique([bucket, storagePath])
+  @@index([visitId, kind])
+  @@map("visit_files")
+}
+
+/// In-app notification (§12). Stores a type and its parameters, not text: each
+/// reader sees it in their own language and time zone. `dedupeKey` makes creation
+/// idempotent per recipient (retries never duplicate, §12.1).
+model Notification {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
+  type        String    @db.VarChar(64)
+  data        Json
+  link        String?   @db.VarChar(500)
+  dedupeKey   String    @map("dedupe_key") @db.VarChar(200)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(3)
+
+  recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientId, dedupeKey])
+  @@index([recipientId, createdAt])
+  @@map("notifications")
 }

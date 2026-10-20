@@ -11,12 +11,18 @@ import {
   ROLES,
   ROLE_DEFAULT_PERMISSIONS,
   VERIFICATION_ISSUES,
+  VISIT_FILE_KINDS,
+  VISIT_PHASES,
+  VISIT_STATUSES,
+  weekdayOf,
 } from '@ftms/core';
 import { describe, expect, it } from 'vitest';
 import ar from '../messages/ar.json';
 import en from '../messages/en.json';
 import { intlLocale, resolveLocale } from '../i18n/locale';
 import { needsRefresh, tokenExpiresAt } from './auth/tokens';
+import { lastDayOf, monthGrid, parseMonth, shiftMonth, WEEK_ORDER } from './calendar';
+import { showValue } from './display';
 import { navigationFor } from './navigation';
 import { permissionMessageKey } from './permission-label';
 
@@ -57,6 +63,18 @@ describe('message catalogs', () => {
       ...VERIFICATION_ISSUES.map((c) => `reviews.issues.${c}`),
       ...VERIFICATION_ISSUES.map((c) => `reviews.issueHints.${c}`),
       ...MEMBERSHIP_SOURCES.map((c) => `students.sources.${c}`),
+    ];
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of required)
+        expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
+    }
+  });
+
+  it('translate every Phase 3 code: visit statuses, phases, file kinds', () => {
+    const required = [
+      ...VISIT_STATUSES.map((c) => `visits.status.${c}`),
+      ...VISIT_PHASES.map((c) => `visits.phase.${c}`),
+      ...VISIT_FILE_KINDS.map((c) => `visits.files.kinds.${c}`),
     ];
     for (const catalog of [ar, en] as Tree[]) {
       for (const key of required)
@@ -171,8 +189,43 @@ describe('navigation per role (§18.2)', () => {
           '/students',
           '/groups',
           '/reviews',
+          '/calendar',
+          '/notifications',
+          '/visits',
+          '/schedule',
         ]).toContain(item.href);
-      } else expect(item.phase).toBeGreaterThanOrEqual(3);
+      } else expect(item.phase).toBeGreaterThanOrEqual(4);
     }
+  });
+});
+
+describe('calendar month view (§18.1)', () => {
+  it('lays out weeks from Saturday to Friday, covering the whole month', () => {
+    expect(WEEK_ORDER).toEqual([6, 0, 1, 2, 3, 4, 5]);
+    const weeks = monthGrid('2026-11');
+    expect(weeks[0]?.[0]).toBe('2026-10-31'); // the Saturday before 1 November (a Sunday)
+    for (const week of weeks) {
+      expect(week).toHaveLength(7);
+      expect(weekdayOf(week[0]!)).toBe(6);
+    }
+    expect(weeks.flat()).toContain('2026-11-30');
+    expect(weeks.at(-1)?.at(-1)).toBe('2026-12-04');
+  });
+
+  it('moves between months and parses the month parameter safely', () => {
+    expect(shiftMonth('2026-12', 1)).toBe('2027-01');
+    expect(shiftMonth('2026-01', -1)).toBe('2025-12');
+    expect(lastDayOf('2028-02')).toBe('2028-02-29');
+    expect(parseMonth('2026-13', '2026-10-21')).toBe('2026-10');
+    expect(parseMonth('<script>', '2026-10-21')).toBe('2026-10');
+    expect(parseMonth('2027-03', '2026-10-21')).toBe('2027-03');
+  });
+
+  it('shows recorded history values as plain text', () => {
+    expect(showValue(null)).toBe('—');
+    expect(showValue(['A', 'B'])).toBe('A, B');
+    expect(showValue({ name: 'Farm', latitude: null, mapUrl: 'https://x' })).toBe(
+      'name: Farm · mapUrl: https://x',
+    );
   });
 });

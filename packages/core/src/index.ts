@@ -7,6 +7,8 @@ export * from './constants';
 export * from './errors';
 export * from './health';
 export * from './i18n';
+export * from './scheduling/contracts';
+export * from './scheduling/time';
 export * from './students/contracts';
 export * from './students/names';
 export * from './text';

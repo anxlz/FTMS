@@ -21,6 +21,7 @@ import { type RequestContext } from '../common/request-context';
 import { AppConfigService } from '../config/app-config.service';
 import { type Prisma, type StudentVerificationRequest } from '../generated/prisma/client';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiter, rateLimitKey } from '../rate-limit/rate-limiter';
 import { GroupsService } from './groups.service';
@@ -67,6 +68,7 @@ export class VerificationsService {
     private readonly mail: MailService,
     private readonly background: BackgroundTasks,
     private readonly config: AppConfigService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /* ───────────────────────────── the student ───────────────────────────── */
@@ -374,6 +376,12 @@ export class VerificationsService {
           },
           tx,
         );
+        await this.notifications.notify(tx, [request.userId], {
+          type: 'verification.approved',
+          data: {},
+          link: '/dashboard',
+          dedupeKey: `verification.approved:${id}`,
+        });
         return request.user.email;
       });
     } catch (error) {
@@ -421,6 +429,12 @@ export class VerificationsService {
         },
         tx,
       );
+      await this.notifications.notify(tx, [request.userId], {
+        type: 'verification.rejected',
+        data: { reason },
+        link: '/verification',
+        dedupeKey: `verification.rejected:${id}`,
+      });
     });
     const content = accountNotVerifiedEmail(reason, this.config.get('WEB_APP_URL'));
     this.background.run('verification rejected email', () =>

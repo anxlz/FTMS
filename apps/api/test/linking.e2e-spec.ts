@@ -424,6 +424,13 @@ describe('Account linking: first login and signup (§4.2, §4.3, §20.1)', () =>
       where: { action: 'student.verification.approved' },
     });
     expect(audit).toMatchObject({ actorId: reviewer.id, reason: 'Confirmed with registrar' });
+    // The decision also reaches the student's notification center (§12).
+    expect(
+      await prisma.notification.findMany({
+        where: { recipientId: request.userId },
+        select: { type: true, link: true },
+      }),
+    ).toEqual([{ type: 'verification.approved', link: '/dashboard' }]);
   });
 
   it('an admin cannot activate an unverified account; reactivation returns it to review', async () => {

@@ -7,9 +7,12 @@ import {
   bearer,
   bootTestApp,
   buildWorkbook,
+  cairoDate,
   createGroup,
+  createProgram,
   createStudentRecord,
   createUser,
+  createVisit,
   login,
   type Mailbox,
   recordOf,
@@ -69,6 +72,12 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
     record: SeededRecord;
     group: { id: string; name: string };
     busyGroup: { id: string; name: string };
+    /** Phase 3: visits of the calling student's group, a schedule, a day off. */
+    visit: string;
+    cancelledVisit: string;
+    fileId: string;
+    schedule: string;
+    exception: string;
   }
 
   interface Case {
@@ -94,6 +103,26 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
     ANONYMOUS: 401,
   });
   const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  /** Phase 3 settings that only the Training Director (and Super Admin) hold by default. */
+  const DIRECTOR_ONLY = (ok: number): Record<Caller, number> => ({
+    SUPER_ADMIN: ok,
+    TRAINING_DIRECTOR: ok,
+    FACULTY: 403,
+    STUDENT: 403,
+    ANONYMOUS: 401,
+  });
+  /** Every signed-in account (each sees only its own scope). */
+  const SIGNED_IN = (ok: number): Record<Caller, number> => ({
+    SUPER_ADMIN: ok,
+    TRAINING_DIRECTOR: ok,
+    FACULTY: ok,
+    STUDENT: ok,
+    ANONYMOUS: 401,
+  });
 
   const n = { i: 0 };
   const newStaff = (role: string) => ({
@@ -460,6 +489,179 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         ANONYMOUS: 202,
       },
     },
+    /* ── Phase 3: program, schedules, visits, calendars, notifications ── */
+    {
+      name: 'GET /program',
+      send: (c) => http().get('/program').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /program (already configured)',
+      send: (c) =>
+        http()
+          .post('/program')
+          .set(as(c))
+          .send({
+            name: 'Second program',
+            startDate: cairoDate(0),
+            durationWeeks: 12,
+            allowedAbsences: 2,
+            timing: { checkInOpensMinutes: 15, graceMinutes: 15, checkInClosesMinutes: 60 },
+          }),
+      expected: DIRECTOR_ONLY(409),
+    },
+    {
+      name: 'PATCH /program',
+      send: (c) => http().patch('/program').set(as(c)).send({ name: 'Renamed program' }),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /program/history',
+      send: (c) => http().get('/program/history').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /schedules',
+      send: (c) => http().get('/schedules').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /schedules',
+      send: (c, t) =>
+        http()
+          .post('/schedules')
+          .set(as(c))
+          .send({
+            title: 'Matrix schedule',
+            weekdays: [1],
+            startTime: '10:00',
+            startsOn: cairoDate(7),
+            endsOn: cairoDate(13),
+            groupIds: [t.group.id],
+          }),
+      expected: DIRECTOR_ONLY(201),
+    },
+    {
+      name: 'PATCH /schedules/:id',
+      send: (c, t) =>
+        http().patch(`/schedules/${t.schedule}`).set(as(c)).send({ title: 'Renamed schedule' }),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'POST /schedules/:id/end',
+      send: (c, t) =>
+        http().post(`/schedules/${t.schedule}/end`).set(as(c)).send({ reason: 'Matrix end' }),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /schedule-exceptions',
+      send: (c) => http().get('/schedule-exceptions').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /schedule-exceptions',
+      send: (c) =>
+        http()
+          .post('/schedule-exceptions')
+          .set(as(c))
+          .send({ date: cairoDate(31), reason: 'Matrix holiday' }),
+      expected: DIRECTOR_ONLY(201),
+    },
+    {
+      name: 'DELETE /schedule-exceptions/:id',
+      send: (c, t) => http().delete(`/schedule-exceptions/${t.exception}`).set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /calendar',
+      send: (c) =>
+        http()
+          .get(`/calendar?from=${cairoDate(0)}&to=${cairoDate(30)}`)
+          .set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /visits',
+      send: (c, t) =>
+        http()
+          .post('/visits')
+          .set(as(c))
+          .send({
+            title: 'Matrix visit',
+            date: cairoDate(7),
+            startTime: '10:00',
+            groupIds: [t.group.id],
+          }),
+      expected: STAFF_ONLY(201),
+    },
+    {
+      name: 'GET /visits/:id (student: own group)',
+      send: (c, t) => http().get(`/visits/${t.visit}`).set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'GET /visits/:id/history',
+      send: (c, t) => http().get(`/visits/${t.visit}/history`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'PATCH /visits/:id',
+      send: (c, t) =>
+        http().patch(`/visits/${t.visit}`).set(as(c)).send({ title: 'Renamed visit' }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /visits/:id/cancel',
+      send: (c, t) =>
+        http().post(`/visits/${t.visit}/cancel`).set(as(c)).send({ reason: 'Matrix cancel' }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /visits/:id/restore',
+      send: (c, t) => http().post(`/visits/${t.cancelledVisit}/restore`).set(as(c)).send({}),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /visits/:id/files',
+      send: (c, t) =>
+        http()
+          .post(`/visits/${t.visit}/files`)
+          .set(as(c))
+          .field('kind', 'COVER')
+          .attach('file', PNG, 'cover.png'),
+      expected: STAFF_ONLY(201),
+    },
+    {
+      name: 'DELETE /visits/:id/files/:fileId',
+      send: (c, t) => http().delete(`/visits/${t.visit}/files/${t.fileId}`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /notifications',
+      send: (c) => http().get('/notifications').set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'GET /notifications/unread-count',
+      send: (c) => http().get('/notifications/unread-count').set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /notifications/read-all',
+      send: (c) => http().post('/notifications/read-all').set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'GET /local-files/:token (public; forged token)',
+      send: (c) => http().get('/local-files/e30.0000').set(as(c)),
+      expected: {
+        SUPER_ADMIN: 404,
+        TRAINING_DIRECTOR: 404,
+        FACULTY: 404,
+        STUDENT: 404,
+        ANONYMOUS: 404,
+      },
+    },
   ];
 
   it.each(cases.flatMap((c) => CALLERS.map((caller) => [c.name, caller, c] as const)))(
@@ -469,13 +671,58 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
       const record = await createStudentRecord(app);
       const busyGroup = await createGroup(app);
       await addToGroup(app, record.id, busyGroup.id);
+      const group = await createGroup(app);
+
+      // Phase 3 fixtures: the calling student's group has the visits.
+      const program = await createProgram(app);
+      const studentGroup = await createGroup(app);
+      await addToGroup(app, await recordOf(app, users.STUDENT.id), studentGroup.id);
+      const visit = await createVisit(app, program.id, [studentGroup.id]);
+      const cancelledVisit = await createVisit(app, program.id, [studentGroup.id], {
+        status: 'CANCELLED',
+      });
+      const file = await prisma.visitFile.create({
+        data: {
+          visitId: visit.id,
+          kind: 'DOCUMENT',
+          bucket: 'visit-documents',
+          storagePath: `visits/${visit.id}/matrix.pdf`,
+          fileName: 'matrix.pdf',
+          contentType: 'application/pdf',
+          sizeBytes: 100,
+        },
+      });
+      const schedule = await prisma.trainingSchedule.create({
+        data: {
+          programId: program.id,
+          title: 'Matrix weekly',
+          weekdays: [2],
+          startTime: new Date('1970-01-01T09:00:00Z'),
+          startsOn: new Date(`${cairoDate(1)}T00:00:00Z`),
+          endsOn: new Date(`${cairoDate(28)}T00:00:00Z`),
+          groups: { create: [{ groupId: group.id }] },
+        },
+      });
+      const exception = await prisma.scheduleException.create({
+        data: {
+          programId: program.id,
+          date: new Date(`${cairoDate(29)}T00:00:00Z`),
+          reason: 'Matrix day off',
+        },
+      });
+
       const target: Target = {
         faculty: await createUser(app, 'FACULTY'),
         student,
         studentRecord: await recordOf(app, student.id),
         record,
-        group: await createGroup(app),
+        group,
         busyGroup,
+        visit: visit.id,
+        cancelledVisit: cancelledVisit.id,
+        fileId: file.id,
+        schedule: schedule.id,
+        exception: exception.id,
       };
       const res = await testCase.send(caller, target);
       expect({ status: res.status, code: res.body?.code }).toMatchObject({

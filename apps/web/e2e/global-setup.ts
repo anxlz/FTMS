@@ -9,6 +9,14 @@ const apiDir = path.join(here, '..', '..', 'api');
 const stateDir = path.join(here, '..', '.e2e');
 
 const TABLES = [
+  'notifications',
+  'visit_files',
+  'visit_groups',
+  'training_visits',
+  'schedule_exceptions',
+  'schedule_groups',
+  'training_schedules',
+  'training_programs',
   'auth_challenges',
   'auth_sessions',
   'user_permission_grants',

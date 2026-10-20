@@ -25,6 +25,7 @@ import {
   type StudentProfile,
 } from '../generated/prisma/client';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { profileChangeDecidedEmail } from './student-emails';
 import { StudentErrors } from './student-errors';
@@ -62,6 +63,7 @@ export class ProfileChangesService {
     private readonly mail: MailService,
     private readonly background: BackgroundTasks,
     private readonly config: AppConfigService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private toOwn(request: ProfileChangeRequest, live?: StudentProfile): OwnProfileChange {
@@ -306,6 +308,14 @@ export class ProfileChangesService {
           },
           tx,
         );
+        if (account) {
+          await this.notifications.notify(tx, [account.id], {
+            type: 'profile_change.approved',
+            data: { comment: input.comment ?? null },
+            link: '/profile',
+            dedupeKey: `profile_change.approved:${id}`,
+          });
+        }
         return account?.email ?? null;
       });
     } catch (error) {
@@ -352,6 +362,14 @@ export class ProfileChangesService {
         },
         tx,
       );
+      if (request.student.userId) {
+        await this.notifications.notify(tx, [request.student.userId], {
+          type: 'profile_change.rejected',
+          data: { reason },
+          link: '/profile',
+          dedupeKey: `profile_change.rejected:${id}`,
+        });
+      }
     });
     this.notify(request.student.user?.email ?? null, false, reason);
     return this.detail(id);

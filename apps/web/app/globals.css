@@ -674,3 +674,188 @@ a.tab {
   text-decoration: none;
   text-align: center;
 }
+
+/* ── Phase 3: calendars, visits, schedules, notifications ─────────────── */
+.bell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  text-decoration: none;
+  font-weight: 600;
+}
+.bell-count {
+  min-inline-size: 1.5rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--brand-gold);
+  color: var(--brand-navy);
+  font-size: 0.8rem;
+  text-align: center;
+}
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+fieldset > legend {
+  font-weight: 500;
+  padding: 0;
+  margin-block-end: 0.35rem;
+}
+.plain-fieldset[disabled] {
+  opacity: 0.75;
+}
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.35rem 1rem;
+  max-block-size: 16rem;
+  overflow-y: auto;
+}
+.check-list-inline {
+  display: flex;
+  flex-wrap: wrap;
+  max-block-size: none;
+}
+.check-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.check-list input {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+}
+.check-list [hidden] {
+  display: none;
+}
+details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--brand-blue);
+  margin-block-end: 0.75rem;
+}
+.month-grid {
+  table-layout: fixed;
+  min-inline-size: 42rem;
+}
+.month-grid td {
+  vertical-align: top;
+  block-size: 6.5rem;
+  border: 1px solid var(--line);
+  padding: 0.35rem;
+}
+.month-grid th {
+  text-align: center;
+}
+.day-number {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.day-outside {
+  background: var(--page);
+}
+.day-today {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: -2px;
+}
+.day-today .day-number {
+  color: var(--brand-navy);
+  font-weight: 700;
+}
+.day-visits {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  font-size: 0.8rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.day-visits a {
+  display: block;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.35rem;
+  background: var(--info-bg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visit-cancelled a,
+.visit-cancelled strong {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.day-visits .visit-cancelled a {
+  background: var(--page);
+}
+.agenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.agenda > li {
+  border-block-end: 1px solid var(--line);
+  padding-block-end: 0.6rem;
+}
+.agenda p {
+  margin: 0.2rem 0 0;
+}
+.status-scheduled,
+.status-phase-upcoming {
+  color: var(--ok);
+}
+.status-scheduled::before,
+.status-phase-upcoming::before {
+  content: '●';
+}
+.status-phase-check_in_open {
+  color: var(--warn);
+}
+.status-phase-check_in_open::before {
+  content: '◐';
+}
+.status-phase-finished {
+  color: var(--muted);
+}
+.status-phase-finished::before {
+  content: '✓';
+}
+.visit-cover {
+  inline-size: 100%;
+  max-block-size: 22rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+.pre-line {
+  white-space: pre-line;
+}
+.file-list,
+.history,
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.history > li {
+  border-inline-start: 3px solid var(--line);
+  padding-inline-start: 0.75rem;
+}
+.history p {
+  margin: 0;
+}
+.notification p {
+  margin: 0.25rem 0;
+}
+.notification-unread {
+  border-inline-start: 4px solid var(--brand-gold);
+}

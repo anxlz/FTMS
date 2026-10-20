@@ -1,6 +1,15 @@
 import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { type AuthResponse, type Role } from '@ftms/core';
+import {
+  addDays,
+  type AuthResponse,
+  type LocalDate,
+  type LocalTime,
+  PROGRAM_TIME_ZONE,
+  type Role,
+  todayIn,
+  zonedToUtc,
+} from '@ftms/core';
 import { type CellValue, Workbook } from 'exceljs';
 import request from 'supertest';
 import { type App } from 'supertest/types';
@@ -53,6 +62,14 @@ export async function bootTestApp(): Promise<{ app: TestApp; mailbox: Mailbox }>
 }
 
 const TRUNCATE = [
+  'notifications',
+  'visit_files',
+  'visit_groups',
+  'training_visits',
+  'schedule_exceptions',
+  'schedule_groups',
+  'training_schedules',
+  'training_programs',
   'auth_challenges',
   'auth_sessions',
   'user_permission_grants',
@@ -201,6 +218,73 @@ export async function addToGroup(app: TestApp, studentId: string, groupId: strin
   await app
     .get(PrismaService)
     .groupMembership.create({ data: { studentId, groupId, source: 'MANUAL' } });
+}
+
+/** A calendar date in the program's time zone, `days` from today. */
+export const cairoDate = (days: number): LocalDate => addDays(todayIn(PROGRAM_TIME_ZONE), days);
+
+/**
+ * The current training program, inserted directly. It started two weeks ago
+ * and runs for 26 weeks, so tests can schedule visits relative to today.
+ */
+export async function createProgram(
+  app: TestApp,
+  options: {
+    startDate?: LocalDate;
+    durationWeeks?: number;
+    timing?: { checkInOpensMinutes: number; graceMinutes: number; checkInClosesMinutes: number };
+    allowedAbsences?: number;
+  } = {},
+): Promise<{ id: string; startDate: LocalDate }> {
+  const startDate = options.startDate ?? cairoDate(-14);
+  const program = await app.get(PrismaService).trainingProgram.create({
+    data: {
+      name: 'Field training',
+      startDate: new Date(`${startDate}T00:00:00Z`),
+      durationWeeks: options.durationWeeks ?? 26,
+      allowedAbsences: options.allowedAbsences ?? 2,
+      ...(options.timing ?? {
+        checkInOpensMinutes: 15,
+        graceMinutes: 15,
+        checkInClosesMinutes: 60,
+      }),
+    },
+  });
+  return { id: program.id, startDate };
+}
+
+/** A visit inserted directly (any date, even past ones the API would refuse). */
+export async function createVisit(
+  app: TestApp,
+  programId: string,
+  groupIds: string[],
+  options: {
+    date?: LocalDate;
+    startTime?: LocalTime;
+    title?: string;
+    status?: 'SCHEDULED' | 'CANCELLED';
+  } = {},
+): Promise<{ id: string; date: LocalDate }> {
+  const date = options.date ?? cairoDate(7);
+  const startTime = options.startTime ?? '10:00';
+  const cancelled = options.status === 'CANCELLED';
+  const visit = await app.get(PrismaService).trainingVisit.create({
+    data: {
+      programId,
+      title: options.title ?? 'Farm visit',
+      date: new Date(`${date}T00:00:00Z`),
+      startTime: new Date(`1970-01-01T${startTime}:00Z`),
+      startsAt: zonedToUtc(date, startTime, PROGRAM_TIME_ZONE),
+      checkInOpensMinutes: 15,
+      graceMinutes: 15,
+      checkInClosesMinutes: 60,
+      ...(cancelled
+        ? { status: 'CANCELLED', cancelReason: 'Weather', cancelledAt: new Date() }
+        : {}),
+      groups: { createMany: { data: groupIds.map((groupId) => ({ groupId })) } },
+    },
+  });
+  return { id: visit.id, date };
 }
 
 /** The record id linked to an account. */

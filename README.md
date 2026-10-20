@@ -3,11 +3,13 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 2 — student records, Excel import, account linking, groups, profile
-> changes** (on top of Phase 1: identity, authentication, roles and permissions, i18n).
-> The master prompt (`docs/master-prompt.md`) is the source of truth; each phase is
-> implemented separately. Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
-> [`phase-1`](docs/checkpoints/phase-1.md), [`phase-2`](docs/checkpoints/phase-2.md) — what
+> **Status: Phase 3 — training program settings, recurring schedules, days off, visits
+> for one or several groups, calendars and in-app notifications** (on top of Phase 2:
+> student records, import, account linking, groups; Phase 1: identity, authentication,
+> roles and permissions, i18n). The master prompt (`docs/master-prompt.md`) is the source
+> of truth; each phase is implemented separately. Checkpoints:
+> [`phase-0`](docs/checkpoints/phase-0.md), [`phase-1`](docs/checkpoints/phase-1.md),
+> [`phase-2`](docs/checkpoints/phase-2.md), [`phase-3`](docs/checkpoints/phase-3.md) — what
 > each delivered, what was verified, and what is still open.
 
 ## Stack
@@ -127,6 +129,11 @@ Validated once at boot by `apps/api/src/config/env.ts`:
 - `.env` files never override variables already set in the shell, CI or Vercel.
 - The web app receives only the API URL and `BFF_SHARED_SECRET`; no database or service
   credential enters its process, and nothing secret reaches the browser.
+- **Database sessions run in UTC.** Prisma's Postgres adapter writes and reads
+  `timestamptz` values as UTC wall-clock text, so the Phase 3 migration pins the database's
+  `timezone` setting to `UTC` (Supabase's default). If that statement is not permitted on
+  your server it prints a notice instead; then check `SHOW timezone;` returns `UTC` (on
+  Supabase: `alter database postgres set timezone to 'UTC';`).
 
 ## Storage buckets
 
@@ -141,7 +148,14 @@ Defined once in `apps/api/src/storage/buckets.ts`; all **private**.
 
 `pnpm storage:provision` creates missing buckets and re-applies settings (forcing any
 public bucket back to private), then verifies. Files are served only through signed URLs
-(max 1 h) issued by the API after an authorization check.
+(max 1 h; visit files 10 min) issued by the API after an authorization check. Uploads pass
+through the web server, so each file is limited to **4 MB** (Vercel's request-body limit),
+below the bucket limits.
+
+**Without Supabase (development and tests only):** the API keeps visit files on local disk
+(the system temp folder, `ftms-local-storage/`) and issues HMAC-signed, expiring links
+`/files/<token>`, which the web app proxies to the API. Production never uses this driver:
+it requires the Supabase variables at boot.
 
 ## App icons and branding
 
@@ -204,8 +218,10 @@ Vercel handler) and covers every role × endpoint combination. The browser suite
 the built API and web servers on ports 4100/3100, seeds the Super Admin with the real seed
 script, and drives in Chromium the sign-in, forced password change, email-code and
 language flows, the spreadsheet import, first sign-in of an imported student, signup (both
-matched and reviewed), profile corrections and group moves; it reads emailed codes from the
-API's log (no SMTP in tests). The two suites run
+matched and reviewed), profile corrections and group moves, program settings, a visit for
+two of three groups (the third sees and receives nothing), document links, cancellation,
+a weekly schedule and a day off; it reads emailed codes from the API's log (no SMTP in
+tests). The two suites run
 one after the other because they share the database.
 
 ## Authentication and access
@@ -252,6 +268,42 @@ one after the other because they share the database.
   seat number change only through a request a reviewer approves (applied atomically) or
   rejects with a reason. Students never see who decided.
 - Every change is in the audit log with before/after values.
+
+## Schedules, visits and notifications
+
+- **Program settings (§11).** The Training Director configures the current program once:
+  name, start date, duration, allowed absences and the default check-in timing (opens
+  before / on time until / closes after the start). The form starts from suggested values
+  (12 weeks, 2 absences, 15/15/60 minutes); nothing in the system assumes them. Each change
+  is recorded with before/after values (`/schedule`, settings history).
+- **Visits (§6.3).** Title, details, date, start/end time, one or several groups
+  (searchable multi-select), place, coordinates, map link, cover photo and documents. Each
+  visit copies the timing defaults when it is created; holders of
+  `attendance.settings.visit` can override them per visit. Changing the defaults never
+  rewrites existing visits (§8.1).
+- **Who sees what (§6.2, §9.4).** A visit is in the calendar and notification center of
+  the students currently in its groups — and nobody else; for other students it does not
+  exist (404). Staff see every visit, optionally by group.
+- **Changes (§6.5).** Moving a visit, changing its place, groups or timing notifies the
+  affected students (a new group's students get "new visit", a removed group's "no longer
+  for your group"); a title alone does not. A cancelled visit stays in the calendar with
+  its reason. Once check-in opens, date, time, groups and timing are locked; once it
+  closes, the visit can no longer be cancelled. History comes from the audit log.
+- **Times (§16.2).** Dates and times are entered and shown in Africa/Cairo; the database
+  derives the UTC instants from them (daylight saving included), so the stored instant can
+  never disagree with what students see.
+- **Weekly schedules (§6.1, §11.2).** A schedule (days, times, period, place, groups)
+  creates its sessions as visits. Changing a schedule re-plans only sessions that have not
+  started and were not changed on their own; ending it cancels its sessions that have not
+  started. A schedule for every group is the training-wide one (`schedule.manage`);
+  `schedule.group.manage` covers group-specific ones.
+- **Days off.** A day off (for one schedule or all) cancels that day's sessions with its
+  reason and tells their students; removing it restores them. Sessions created later on a
+  day off are created cancelled.
+- **Notifications (§12).** Stored as a type and parameters and shown in the reader's
+  language; unread count in the header, mark one or all as read. Each is unique per
+  recipient and event, so retries never duplicate. They also cover account-verification
+  and profile-correction decisions (Phase 2), alongside the emails.
 
 ## Languages
 

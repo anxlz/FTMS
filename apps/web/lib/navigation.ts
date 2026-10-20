@@ -21,9 +21,9 @@ interface StaffEntry extends NavItem {
 
 const STUDENT_NAV: NavItem[] = [
   { key: 'dashboard', href: '/dashboard' },
-  { key: 'trainingCalendar', phase: 3 },
+  { key: 'trainingCalendar', href: '/calendar' },
   { key: 'attendanceHistory', phase: 4 },
-  { key: 'notifications', phase: 3 },
+  { key: 'notifications', href: '/notifications' },
   { key: 'tickets', phase: 5 },
   { key: 'profile', href: '/profile' },
 ];
@@ -31,13 +31,17 @@ const STUDENT_NAV: NavItem[] = [
 const STAFF_NAV: StaffEntry[] = [
   { key: 'dashboard', href: '/dashboard' },
   { key: 'students', href: '/students', anyOf: ['students.read'] },
-  { key: 'visits', phase: 3, anyOf: ['visits.manage'] },
-  { key: 'calendar', phase: 3 },
+  { key: 'visits', href: '/visits', anyOf: ['visits.manage'] },
+  { key: 'calendar', href: '/calendar' },
   { key: 'groups', href: '/groups', anyOf: ['students.read', 'groups.manage'] },
   { key: 'attendance', phase: 4, anyOf: ['attendance.read'] },
   { key: 'tickets', phase: 5, anyOf: ['tickets.process'] },
   { key: 'groupSwaps', phase: 5, anyOf: ['group_swaps.decide'] },
-  { key: 'schedule', phase: 3, anyOf: ['schedule.manage'] },
+  {
+    key: 'schedule',
+    href: '/schedule',
+    anyOf: ['schedule.manage', 'schedule.group.manage', 'attendance.settings.defaults'],
+  },
   { key: 'reviewQueues', href: '/reviews', anyOf: ['profile_changes.decide', 'students.manage'] },
   { key: 'activityLogs', phase: 6, anyOf: ['audit.read'] },
   { key: 'reports', phase: 6, anyOf: ['reports.export'] },

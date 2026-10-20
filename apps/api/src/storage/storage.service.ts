@@ -51,14 +51,20 @@ export class StorageService {
     return data.path;
   }
 
-  async createSignedUrl(bucket: BucketId, path: string, expiresInSeconds: number): Promise<string> {
+  /** `download`: file name to save as (sets Content-Disposition: attachment). */
+  async createSignedUrl(
+    bucket: BucketId,
+    path: string,
+    expiresInSeconds: number,
+    download?: string,
+  ): Promise<string> {
     if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1) {
       throw new RangeError('expiresInSeconds must be a positive integer');
     }
     const ttl = Math.min(expiresInSeconds, MAX_SIGNED_URL_SECONDS);
     const { data, error } = await this.storage
       .from(bucket)
-      .createSignedUrl(assertSafeObjectPath(path), ttl);
+      .createSignedUrl(assertSafeObjectPath(path), ttl, download ? { download } : undefined);
     if (error) throw new Error(`Signing "${bucket}/${path}" failed: ${error.message}`);
     return data.signedUrl;
   }
