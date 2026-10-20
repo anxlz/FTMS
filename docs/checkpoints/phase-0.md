@@ -62,10 +62,12 @@ lists the 8 missing variables by name (no values printed).
 
 ## Decisions taken (and why)
 
+Approved by the project owner on 2026-10-20: decisions 1, 2, 4, 5 and 8.
+
 1. **Node 24 LTS.** `@nestjs/schematics` 12 requires Node ≥ 22.22.3 / 24.15; Vercel defaults to 24.
 2. **TypeScript 6.0, not 7.** Nest CLI 12 pins `~6.0`; `ts-jest` and `typescript-eslint` don't support 7 yet.
 3. **ESLint 9, not 10.** `eslint-config-next`'s plugins don't declare ESLint 10 support.
-4. **Prisma 7.10.1 (stable).** npm's `latest` tag currently points at `8.0.0-rc.23`, a release candidate — not used for a production system.
+4. **Prisma 7.10.1 (stable).** npm's `latest` tag currently points at `8.0.0-rc.23`, a release candidate — not used for a production system. **Rule:** `prisma`, `@prisma/client` and `@prisma/adapter-pg` stay pinned to the exact version `7.10.1` until Prisma 8.0 ships as a stable release; never upgrade them automatically.
 5. **Added `DIRECT_URL`** (not in §2's list): Supabase's transaction pooler can't run `prisma migrate`.
 6. **Vercel adapter:** the compiled Express instance is exported as a Node handler — no `@vendia/serverless-express` (that adapts AWS Lambda events, which Vercel's Node runtime doesn't use).
 7. **Icon source = the logo provided in chat** (per your answer), committed in the repo. `APP_ICON_SOURCE_URL` stays as an optional override; empty by default.
