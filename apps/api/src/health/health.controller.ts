@@ -1,8 +1,11 @@
 import { Controller, Get, Header, Res } from '@nestjs/common';
 import { type LivenessResponse, type ReadinessResponse } from '@ftms/core';
 import type { Response } from 'express';
+import { Public } from '../auth/decorators';
 import { HealthService } from './health.service';
 
+/** Health checks are public: uptime monitors and the web app call them without credentials. */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly health: HealthService) {}

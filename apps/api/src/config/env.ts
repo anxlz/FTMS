@@ -63,10 +63,19 @@ export const EnvObjectSchema = z.object({
   SMTP_USER: z.preprocess(blankToUndefined, z.email().default('ST22425244@agr.asu.edu.eg')),
   SMTP_PASS: optional(z.string().min(1)),
 
-  // Signing secrets — consumed from Phase 1 (JWT) and Phase 4 (QR); validated now.
-  JWT_ACCESS_SECRET: optional(signingSecret),
-  JWT_REFRESH_SECRET: optional(signingSecret),
+  // Token signing secrets. Required everywhere: authentication cannot work without them.
+  JWT_ACCESS_SECRET: z.preprocess(blankToUndefined, signingSecret),
+  JWT_REFRESH_SECRET: z.preprocess(blankToUndefined, signingSecret),
+  // QR token signing — consumed from Phase 4; validated now.
   QR_HMAC_SECRET: optional(signingSecret),
+
+  // Shared with the web server (never the browser). Lets the API trust the real
+  // client IP the web app forwards, so per-IP rate limits apply to users, not to
+  // the web server. Without it the API uses the connecting address.
+  BFF_SHARED_SECRET: optional(signingSecret),
+
+  // Public URL of the web app, used for links in emails.
+  WEB_APP_URL: optional(z.url({ protocol: /^https?$/ })),
 });
 
 /** Variables that must be present whenever NODE_ENV=production. */
@@ -76,9 +85,9 @@ export const PRODUCTION_REQUIRED = [
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
   'SMTP_PASS',
-  'JWT_ACCESS_SECRET',
-  'JWT_REFRESH_SECRET',
   'QR_HMAC_SECRET',
+  'BFF_SHARED_SECRET',
+  'WEB_APP_URL',
 ] as const satisfies readonly (keyof z.infer<typeof EnvObjectSchema>)[];
 
 /** Variables that only make sense together. */
@@ -99,19 +108,20 @@ export const EnvSchema = EnvObjectSchema.superRefine((env, ctx) => {
     }
   }
 
+  if (env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['JWT_REFRESH_SECRET'],
+      message: 'must differ from JWT_ACCESS_SECRET',
+    });
+  }
+
   if (env.NODE_ENV !== 'production') return;
 
   for (const key of PRODUCTION_REQUIRED) {
     if (env[key] === undefined) {
       ctx.addIssue({ code: 'custom', path: [key], message: 'is required in production' });
     }
-  }
-  if (env.JWT_ACCESS_SECRET !== undefined && env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['JWT_REFRESH_SECRET'],
-      message: 'must differ from JWT_ACCESS_SECRET',
-    });
   }
 });
 

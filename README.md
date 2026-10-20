@@ -3,26 +3,27 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 0 — environment & monorepo scaffolding.** No business features yet.
+> **Status: Phase 1 — identity, authentication, roles and permissions, i18n, app shell.**
 > The master prompt (`docs/master-prompt.md`) is the source of truth; each phase is
-> implemented in its own session. See [`docs/checkpoints/phase-0.md`](docs/checkpoints/phase-0.md)
-> for what Phase 0 delivered, what was verified, and what Phase 1 picks up.
+> implemented separately. Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
+> [`phase-1`](docs/checkpoints/phase-1.md) — what each delivered, what was verified, and
+> what is still open.
 
 ## Stack
 
-| Layer           | Choice                                                                     |
-| --------------- | -------------------------------------------------------------------------- |
-| Monorepo        | Turborepo 2 + pnpm 10 workspaces                                           |
-| Runtime         | Node.js 24 LTS                                                             |
-| Web             | Next.js 16 (App Router, TypeScript) → Vercel                               |
-| API             | NestJS 12 (TypeScript) → Vercel serverless function                        |
-| Database        | Supabase Postgres via Prisma ORM 7 (`@prisma/adapter-pg`)                  |
-| Storage         | Supabase Storage, private buckets + signed URLs                            |
-| Cache / limits  | Upstash Redis (REST)                                                       |
-| Email           | Gmail SMTP via Nodemailer, sender `ST22425244@agr.asu.edu.eg`              |
-| Shared code     | `packages/core` — Zod schemas, types, pure business rules                  |
-| Tests           | Jest (API), Vitest (web, core); Playwright arrives with the first UI flows |
-| Mobile (future) | Tauri, consuming the same JWT API — `apps/mobile` is reserved and empty    |
+| Layer           | Choice                                                                  |
+| --------------- | ----------------------------------------------------------------------- |
+| Monorepo        | Turborepo 2 + pnpm 10 workspaces                                        |
+| Runtime         | Node.js 24 LTS                                                          |
+| Web             | Next.js 16 (App Router, TypeScript) → Vercel                            |
+| API             | NestJS 12 (TypeScript) → Vercel serverless function                     |
+| Database        | Supabase Postgres via Prisma ORM 7 (`@prisma/adapter-pg`)               |
+| Storage         | Supabase Storage, private buckets + signed URLs                         |
+| Cache / limits  | Upstash Redis (REST)                                                    |
+| Email           | Gmail SMTP via Nodemailer, sender `ST22425244@agr.asu.edu.eg`           |
+| Shared code     | `packages/core` — Zod schemas, types, pure business rules               |
+| Tests           | Jest (API), Vitest (web, core), Playwright (browser flows)              |
+| Mobile (future) | Tauri, consuming the same JWT API — `apps/mobile` is reserved and empty |
 
 ## Repository layout
 
@@ -60,6 +61,7 @@ cp apps/web/.env.example apps/web/.env.local
 
 pnpm db:generate                           # generate the Prisma client
 pnpm db:deploy                             # apply migrations (uses DIRECT_URL)
+pnpm db:seed                               # first Super Admin; prints its one-time password
 pnpm storage:provision                     # create the private Supabase buckets
 pnpm --filter @ftms/api mail:verify        # optional: real SMTP login check
 
@@ -85,12 +87,13 @@ A plain local Postgres works too: set only `DATABASE_URL`.
 | `pnpm build`                          | Build every package (generates the Prisma client first)       |
 | `pnpm lint` / `pnpm typecheck`        | ESLint (type-aware) / TypeScript across the monorepo          |
 | `pnpm test`                           | Unit tests (no network, no database)                          |
-| `pnpm test:e2e`                       | API end-to-end tests against a real Postgres (`DATABASE_URL`) |
+| `pnpm test:e2e`                       | API + browser end-to-end tests on a real Postgres (see below) |
 | `pnpm verify`                         | lint + typecheck + build + test, as CI runs them              |
 | `pnpm format` / `pnpm format:check`   | Prettier                                                      |
 | `pnpm db:generate`                    | Generate the Prisma client                                    |
 | `pnpm db:migrate`                     | Create + apply a migration in development                     |
 | `pnpm db:deploy`                      | Apply pending migrations (CI / production)                    |
+| `pnpm db:seed`                        | Create the first Super Admin (`-- --reset-password` recovers) |
 | `pnpm storage:provision`              | Create/repair private storage buckets (idempotent)            |
 | `pnpm --filter @ftms/api mail:verify` | Real Gmail SMTP handshake + login, sends nothing              |
 | `pnpm icons`                          | Regenerate every icon from the official logo                  |
@@ -111,14 +114,16 @@ the web app.
 
 Validated once at boot by `apps/api/src/config/env.ts`:
 
-- `DATABASE_URL` is required everywhere.
-- In **production** every service credential and signing secret is required (≥ 32
-  characters; access and refresh secrets must differ). The API refuses to start otherwise
-  and names the missing variables — never their values.
+- `DATABASE_URL`, `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are required everywhere
+  (secrets ≥ 32 characters; access and refresh must differ).
+- In **production** every service credential and secret is also required, plus
+  `BFF_SHARED_SECRET` and `WEB_APP_URL`. The API refuses to start otherwise and names the
+  missing variables — never their values.
 - Paired variables (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, Upstash URL + token)
   must be set together.
 - `.env` files never override variables already set in the shell, CI or Vercel.
-- The web app receives only `NEXT_PUBLIC_API_URL`; backend secrets never enter its process.
+- The web app receives only the API URL and `BFF_SHARED_SECRET`; no database or service
+  credential enters its process, and nothing secret reaches the browser.
 
 ## Storage buckets
 
@@ -168,7 +173,7 @@ layer, so every launcher mask frames it without clipping.
 Two Vercel projects from this repository (full production verification is Phase 7):
 
 **Web** — Root Directory `apps/web`, framework Next.js, Node.js 24. Environment:
-`NEXT_PUBLIC_API_URL`.
+`NEXT_PUBLIC_API_URL` (or `API_URL`) and `BFF_SHARED_SECRET`.
 
 **API** — Root Directory `apps/api`, Node.js 24. `apps/api/vercel.json` builds with
 Turborepo, routes every path to `api/index.js` (the compiled Nest app wrapped for Vercel's
@@ -177,20 +182,61 @@ Node runtime, booted once per warm instance), and serves no static files besides
 with `NODE_ENV=production`.
 
 After the first deploy: run `pnpm db:deploy` against production (`DIRECT_URL`), then
+`pnpm db:seed` (from a trusted terminal — it prints the one-time password), then
 `pnpm storage:provision`, then check `GET /health/ready` returns `ready`.
 
 ## Running the tests
 
 ```bash
-pnpm test                         # unit tests: core, api, web
+pnpm test                                   # unit tests: core, api, web
 DATABASE_URL=postgresql://… pnpm db:deploy
-DATABASE_URL=postgresql://… pnpm test:e2e
+pnpm build
+pnpm --filter @ftms/web exec playwright install chromium   # once per machine
+DATABASE_URL=postgresql://… pnpm test:e2e   # API suite, then the browser suite
 ```
 
-E2E tests boot the real Nest application (and the Vercel handler) against the given
-Postgres. They need the migrations applied and use a throwaway database in CI.
+**Use a disposable database: both suites wipe its account tables.** (The browser suite
+refuses a `supabase.co` URL.) The API suite boots the real Nest application (and the
+Vercel handler) and covers every role × endpoint combination. The browser suite starts
+the built API and web servers on ports 4100/3100, seeds the Super Admin with the real seed
+script, and drives the sign-in, forced password change, email-code and language flows in
+Chromium; it reads emailed codes from the API's log (no SMTP in tests). The two suites run
+one after the other because they share the database.
+
+## Authentication and access
+
+- **Sign-in:** email (or student seat number) + password, or a 6-digit code emailed to
+  the account (10 min, 5 attempts, a new code replaces the old). Forgot-password uses the
+  same codes. Responses never reveal whether an account exists.
+- **Tokens:** 15-minute access JWT + rotating refresh token (30-day sessions; reusing a
+  rotated token revokes the session). The browser never sees them: the Next.js server
+  keeps them in `httpOnly` cookies and calls the API itself.
+- **Authorization is decided by the API on every request**, from the database: role,
+  account status and effective permissions (role defaults plus per-user allow/deny
+  grants for Training Directors and Faculty). The web app only hides what the API would
+  refuse anyway.
+- **First password:** accounts created by an admin have no password; they sign in with an
+  emailed code and must set one. The Super Admin's generated password must be replaced at
+  first sign-in.
+- **Rate limits** (Upstash; in-memory outside production when unconfigured) on failed
+  sign-ins, code requests and code failures, per account and per client IP.
+- **Audit log:** append-only (enforced by a database trigger). Passwords, codes and
+  tokens are never written to it.
+
+## Languages
+
+Arabic (default, right-to-left) and English (left-to-right), via `next-intl`. Numbers
+use Western digits in both. A language picked before signing in is saved to the account;
+otherwise the account's saved language applies on every device.
 
 ## Super Admin
 
-`ST22425244@agr.asu.edu.eg` is both the email sender and the first Super Admin. Its seed
-script (random password printed once, forced change on first login) is part of Phase 1.
+`ST22425244@agr.asu.edu.eg` is both the email sender and the first Super Admin.
+
+```bash
+pnpm db:seed                          # creates the account if missing
+pnpm db:seed -- --reset-password      # recovery: new one-time password, sessions revoked
+```
+
+The random one-time password is printed **once** to that terminal — never stored readable,
+never logged, never committed — and must be replaced at the first sign-in.

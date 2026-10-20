@@ -1,0 +1,31 @@
+/**
+ * Authentication tuning. Kept in code (reviewed, versioned) rather than env.
+ */
+export const AUTH = {
+  issuer: 'ftms-api',
+  audience: 'ftms',
+  /** Short-lived: a stolen access token is useful for minutes, not days. */
+  accessTokenSeconds: 15 * 60,
+  /** Absolute session lifetime; refresh rotation does not extend it. */
+  sessionSeconds: 30 * 24 * 60 * 60,
+  /** A just-rotated refresh token stays usable this long (parallel tabs/requests). */
+  refreshGraceSeconds: 60,
+
+  codeDigits: 6,
+  codeSeconds: 10 * 60,
+  codeMaxAttempts: 5,
+} as const;
+
+/** Fixed-window limits: `limit` hits per `windowSeconds`. */
+export const LIMITS = {
+  loginFailuresPerIdentifier: { limit: 10, windowSeconds: 15 * 60 },
+  loginFailuresPerIp: { limit: 50, windowSeconds: 15 * 60 },
+  codeRequestsPerEmail: { limit: 5, windowSeconds: 60 * 60 },
+  codeRequestCooldownPerEmail: { limit: 1, windowSeconds: 60 },
+  codeRequestsPerIp: { limit: 30, windowSeconds: 60 * 60 },
+  codeFailuresPerEmail: { limit: 10, windowSeconds: 15 * 60 },
+  codeFailuresPerIp: { limit: 50, windowSeconds: 15 * 60 },
+  passwordChangeFailuresPerUser: { limit: 10, windowSeconds: 15 * 60 },
+} as const;
+
+export type LimitPolicy = (typeof LIMITS)[keyof typeof LIMITS];

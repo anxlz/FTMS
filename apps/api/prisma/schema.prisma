@@ -1,11 +1,15 @@
 // FTMS database schema — Supabase Postgres via Prisma ORM.
 //
-// Phase 0 intentionally defines no models: the core entities (§16 of the master
-// prompt) are introduced in Phase 1 through regular migrations.
+// Phase 1 defines the identity, authorization and audit foundation (§16).
+// Feature entities (groups, visits, attendance, tickets, swaps, …) arrive with
+// the phase that implements them, each through its own migration.
 //
-// Connection URLs are not declared here. Prisma 7 reads the CLI connection from
-// `prisma.config.ts`, and the runtime connection is passed to the driver adapter
-// in `src/prisma/prisma.service.ts`.
+// Constraints Prisma cannot express (lowercase-email CHECKs, the append-only
+// audit trigger, Row Level Security) live in the migration SQL and are covered
+// by the database structure tests in `apps/api/test/database.e2e-spec.ts`.
+//
+// Connection URLs are not declared here: the CLI reads `prisma.config.ts`, the
+// runtime passes the URL to the driver adapter in `src/prisma/prisma.service.ts`.
 
 generator client {
   provider     = "prisma-client"
@@ -16,4 +20,207 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Role {
+  SUPER_ADMIN
+  TRAINING_DIRECTOR
+  FACULTY
+  STUDENT
+}
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum Locale {
+  ar
+  en
+}
+
+/// One login identity. `email` is stored normalized (trimmed, lowercase).
+model User {
+  id                 String        @id @default(uuid(7)) @db.Uuid
+  email              String        @unique @db.VarChar(254)
+  role               Role
+  status             AccountStatus @default(ACTIVE)
+  displayName        String        @map("display_name") @db.VarChar(200)
+  /// argon2id hash. NULL until the account sets a password (first login by email code).
+  passwordHash       String?       @map("password_hash")
+  mustChangePassword Boolean       @default(false) @map("must_change_password")
+  passwordChangedAt  DateTime?     @map("password_changed_at") @db.Timestamptz(3)
+  emailVerifiedAt    DateTime?     @map("email_verified_at") @db.Timestamptz(3)
+  preferredLocale    Locale        @default(ar) @map("preferred_locale")
+  lastLoginAt        DateTime?     @map("last_login_at") @db.Timestamptz(3)
+  createdById        String?       @map("created_by_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  createdBy      User?                 @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers   User[]                @relation("UserCreatedBy")
+  studentProfile StudentProfile?
+  facultyProfile FacultyProfile?
+  sessions       AuthSession[]
+  challenges     AuthChallenge[]
+  grants         UserPermissionGrant[] @relation("GrantSubject")
+  grantsGiven    UserPermissionGrant[] @relation("GrantGrantor")
+
+  @@index([role, status])
+  @@map("users")
+}
+
+/// Authoritative academic record of a student. Exists before any account
+/// (faculty imports it in Phase 2); `userId` is set when an account is linked.
+model StudentProfile {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  userId          String?  @unique @map("user_id") @db.Uuid
+  /// Normalized (trimmed, uppercase).
+  seatNumber      String   @unique @map("seat_number") @db.VarChar(20)
+  fullName        String   @map("full_name") @db.VarChar(200)
+  firstName       String?  @map("first_name") @db.VarChar(60)
+  fatherName      String?  @map("father_name") @db.VarChar(60)
+  grandfatherName String?  @map("grandfather_name") @db.VarChar(60)
+  familyName      String?  @map("family_name") @db.VarChar(60)
+  /// University email on the imported record (may be missing, §4.1). Normalized lowercase.
+  universityEmail String?  @unique @map("university_email") @db.VarChar(254)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("student_profiles")
+}
+
+model FacultyProfile {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  userId        String   @unique @map("user_id") @db.Uuid
+  fullName      String   @map("full_name") @db.VarChar(200)
+  academicTitle String?  @map("academic_title") @db.VarChar(100)
+  department    String?  @db.VarChar(200)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("faculty_profiles")
+}
+
+/// Permission catalog — mirrors `PERMISSIONS` in @ftms/core (kept in sync by a test).
+model Permission {
+  key         String  @id @db.VarChar(64)
+  description String  @db.VarChar(200)
+  grantable   Boolean
+
+  grants UserPermissionGrant[]
+
+  @@map("permissions")
+}
+
+enum GrantEffect {
+  ALLOW
+  DENY
+}
+
+/// Per-user adjustment of a staff role's default permissions.
+model UserPermissionGrant {
+  userId        String      @map("user_id") @db.Uuid
+  permissionKey String      @map("permission_key") @db.VarChar(64)
+  effect        GrantEffect
+  grantedById   String?     @map("granted_by_id") @db.Uuid
+  reason        String      @db.VarChar(500)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user       User       @relation("GrantSubject", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy  User?      @relation("GrantGrantor", fields: [grantedById], references: [id], onDelete: SetNull)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+
+  @@id([userId, permissionKey])
+  @@map("user_permission_grants")
+}
+
+enum AuthMethod {
+  PASSWORD
+  EMAIL_CODE
+}
+
+/// A signed-in device. Refresh tokens rotate on every use; only hashes are stored.
+model AuthSession {
+  id                  String     @id @default(uuid(7)) @db.Uuid
+  userId              String     @map("user_id") @db.Uuid
+  method              AuthMethod
+  /// SHA-256 of the current refresh token id.
+  currentRefreshHash  String     @map("current_refresh_hash") @db.Char(64)
+  /// SHA-256 of the previous refresh token id, accepted briefly after a rotation.
+  previousRefreshHash String?    @map("previous_refresh_hash") @db.Char(64)
+  rotatedAt           DateTime?  @map("rotated_at") @db.Timestamptz(3)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt          DateTime   @default(now()) @map("last_used_at") @db.Timestamptz(3)
+  expiresAt           DateTime   @map("expires_at") @db.Timestamptz(3)
+  revokedAt           DateTime?  @map("revoked_at") @db.Timestamptz(3)
+  revokeReason        String?    @map("revoke_reason") @db.VarChar(64)
+  ip                  String?    @db.VarChar(64)
+  userAgent           String?    @map("user_agent") @db.VarChar(512)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("auth_sessions")
+}
+
+enum ChallengePurpose {
+  LOGIN
+  PASSWORD_RESET
+}
+
+/// Emailed one-time codes (first login, password recovery). Only an HMAC of the code is stored.
+model AuthChallenge {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  purpose     ChallengePurpose
+  codeHash    String           @map("code_hash") @db.Char(64)
+  expiresAt   DateTime         @map("expires_at") @db.Timestamptz(3)
+  attempts    Int              @default(0)
+  maxAttempts Int              @map("max_attempts")
+  consumedAt  DateTime?        @map("consumed_at") @db.Timestamptz(3)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  requestIp   String?          @map("request_ip") @db.VarChar(64)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@map("auth_challenges")
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
+/// Append-only record of security-sensitive and administrative actions (§15).
+/// UPDATE/DELETE/TRUNCATE are rejected by a database trigger. Actor fields are
+/// snapshots, deliberately without foreign keys, so history survives account changes.
+model AuditLog {
+  id           BigInt       @id @default(autoincrement())
+  occurredAt   DateTime     @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  actorId      String?      @map("actor_id") @db.Uuid
+  actorName    String?      @map("actor_name") @db.VarChar(200)
+  actorRole    Role?        @map("actor_role")
+  action       String       @db.VarChar(100)
+  resourceType String       @map("resource_type") @db.VarChar(64)
+  resourceId   String?      @map("resource_id") @db.VarChar(64)
+  outcome      AuditOutcome
+  reason       String?      @db.VarChar(500)
+  before       Json?
+  after        Json?
+  metadata     Json?
+  ip           String?      @db.VarChar(64)
+  userAgent    String?      @map("user_agent") @db.VarChar(512)
+
+  @@index([occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([resourceType, resourceId])
+  @@index([action, occurredAt])
+  @@map("audit_logs")
 }

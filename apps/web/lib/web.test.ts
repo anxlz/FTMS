@@ -1,0 +1,137 @@
+import { API_ERROR_CODES, PERMISSION_KEYS, ROLES, ROLE_DEFAULT_PERMISSIONS } from '@ftms/core';
+import { describe, expect, it } from 'vitest';
+import ar from '../messages/ar.json';
+import en from '../messages/en.json';
+import { intlLocale, resolveLocale } from '../i18n/locale';
+import { needsRefresh, tokenExpiresAt } from './auth/tokens';
+import { navigationFor } from './navigation';
+import { permissionMessageKey } from './permission-label';
+
+type Tree = { [key: string]: string | Tree };
+
+const keys = (tree: Tree, prefix = ''): string[] =>
+  Object.entries(tree).flatMap(([k, v]) =>
+    typeof v === 'string' ? [`${prefix}${k}`] : keys(v, `${prefix}${k}.`),
+  );
+
+const lookup = (tree: Tree, path: string): unknown =>
+  path.split('.').reduce<unknown>((node, part) => (node as Tree | undefined)?.[part], tree);
+
+describe('message catalogs', () => {
+  it('Arabic and English define exactly the same keys', () => {
+    expect(keys(ar as Tree).sort()).toEqual(keys(en as Tree).sort());
+  });
+
+  it('translate every API error code, role and permission', () => {
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const code of API_ERROR_CODES)
+        expect(lookup(catalog, `errors.${code}`)).toEqual(expect.any(String));
+      for (const role of ROLES)
+        expect(lookup(catalog, `roles.${role}`)).toEqual(expect.any(String));
+      for (const key of PERMISSION_KEYS)
+        expect(lookup(catalog, permissionMessageKey(key))).toEqual(expect.any(String));
+    }
+  });
+
+  it('never uses dots inside a key (next-intl reads them as nesting)', () => {
+    const dotted = (tree: Tree): string[] =>
+      Object.entries(tree).flatMap(([k, v]) => [
+        ...(k.includes('.') ? [k] : []),
+        ...(typeof v === 'string' ? [] : dotted(v)),
+      ]);
+    expect(dotted(ar as Tree)).toEqual([]);
+    expect(dotted(en as Tree)).toEqual([]);
+  });
+
+  it('uses Western digits only, in Arabic too (§18.1)', () => {
+    expect(JSON.stringify(ar)).not.toMatch(/[٠-٩]/);
+  });
+});
+
+describe('locale', () => {
+  it('defaults to Arabic and accepts only supported locales', () => {
+    expect(resolveLocale(undefined)).toBe('ar');
+    expect(resolveLocale('fr')).toBe('ar');
+    expect(resolveLocale('en')).toBe('en');
+  });
+
+  it('formats Arabic numbers and dates with Western digits', () => {
+    const number = new Intl.NumberFormat(intlLocale('ar')).format(1234567);
+    const date = new Intl.DateTimeFormat(intlLocale('ar'), {
+      dateStyle: 'long',
+      timeZone: 'Africa/Cairo',
+    }).format(new Date('2026-10-20T12:00:00Z'));
+    expect(number).toMatch(/\d/);
+    expect(number).not.toMatch(/[٠-٩]/);
+    expect(date).toContain('2026');
+    expect(date).toContain('أكتوبر');
+  });
+});
+
+describe('access token expiry', () => {
+  const token = (exp: number) =>
+    `x.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.y`;
+
+  it('reads exp without verifying the signature', () => {
+    expect(tokenExpiresAt(token(1_900_000_000))).toBe(1_900_000_000_000);
+    expect(tokenExpiresAt('garbage')).toBeNull();
+  });
+
+  it('refreshes when missing, unreadable, or within 60 s of expiry', () => {
+    const now = 1_800_000_000_000;
+    expect(needsRefresh(undefined, now)).toBe(true);
+    expect(needsRefresh('garbage', now)).toBe(true);
+    expect(needsRefresh(token(now / 1000 + 30), now)).toBe(true);
+    expect(needsRefresh(token(now / 1000 + 600), now)).toBe(false);
+  });
+});
+
+describe('navigation per role (§18.2)', () => {
+  const nav = (role: (typeof ROLES)[number], permissions = ROLE_DEFAULT_PERMISSIONS[role]) =>
+    navigationFor({ role, permissions: [...permissions] }).map((i) => i.key);
+
+  it('gives students only their own sections', () => {
+    expect(nav('STUDENT')).toEqual([
+      'dashboard',
+      'trainingCalendar',
+      'attendanceHistory',
+      'notifications',
+      'tickets',
+      'profile',
+    ]);
+  });
+
+  it('shows faculty their operational sections but not accounts or audit logs', () => {
+    const items = nav('FACULTY');
+    expect(items).toEqual(
+      expect.arrayContaining([
+        'visits',
+        'groups',
+        'attendance',
+        'tickets',
+        'groupSwaps',
+        'settings',
+      ]),
+    );
+    expect(items).not.toContain('users');
+    expect(items).not.toContain('activityLogs');
+    expect(items).not.toContain('schedule');
+  });
+
+  it('adds schedule, activity logs, reports, review queues and accounts for the Training Director', () => {
+    expect(nav('TRAINING_DIRECTOR')).toEqual(
+      expect.arrayContaining(['schedule', 'activityLogs', 'reports', 'reviewQueues', 'users']),
+    );
+  });
+
+  it('follows per-user grants, not just roles', () => {
+    expect(nav('FACULTY', [...ROLE_DEFAULT_PERMISSIONS.FACULTY, 'users.read'])).toContain('users');
+  });
+
+  it('links only to pages that exist; later-phase items carry their phase', () => {
+    for (const item of navigationFor({ role: 'SUPER_ADMIN', permissions: [...PERMISSION_KEYS] })) {
+      if (item.href) expect(['/dashboard', '/profile', '/admin/users']).toContain(item.href);
+      else expect(item.phase).toBeGreaterThanOrEqual(2);
+    }
+  });
+});

@@ -3,7 +3,13 @@
   "ui": "stream",
   "globalDependencies": ["tsconfig.base.json"],
   "globalEnv": ["NODE_ENV", "APP_TIMEZONE"],
-  "globalPassThroughEnv": ["PRISMA_*", "NEXT_TELEMETRY_DISABLED", "TURBO_TELEMETRY_DISABLED"],
+  "globalPassThroughEnv": [
+    "PRISMA_*",
+    "PLAYWRIGHT_*",
+    "NEXT_TELEMETRY_DISABLED",
+    "TURBO_TELEMETRY_DISABLED",
+    "CI"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "prisma:generate"],
@@ -45,6 +51,11 @@
         "QR_HMAC_SECRET",
         "NEXT_PUBLIC_API_URL"
       ]
+    },
+    "@ftms/web#test:e2e": {
+      "dependsOn": ["build", "@ftms/api#build"],
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
     }
   }
 }

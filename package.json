@@ -12,7 +12,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "turbo run test:e2e --concurrency=1",
     "verify": "turbo run lint typecheck build test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,7 +20,8 @@
     "db:generate": "pnpm --filter @ftms/api prisma:generate",
     "db:migrate": "pnpm --filter @ftms/api prisma:migrate:dev",
     "db:deploy": "pnpm --filter @ftms/api prisma:migrate:deploy",
-    "storage:provision": "pnpm --filter @ftms/api storage:provision"
+    "storage:provision": "pnpm --filter @ftms/api storage:provision",
+    "db:seed": "pnpm --filter @ftms/api seed:super-admin"
   },
   "devDependencies": {
     "prettier": "^3.9.10",

@@ -66,11 +66,28 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Install the Playwright browser
+        run: pnpm --filter @ftms/web exec playwright install --with-deps chromium
+
       - name: Apply migrations to the CI database
         run: pnpm db:deploy
 
+      # API (Jest + supertest) then browser (Playwright: real Next.js + API + Postgres).
+      # Both suites wipe the test database, so turbo runs them one at a time.
       - name: End-to-end tests (real Postgres)
         run: pnpm test:e2e
+
+      - name: Keep the browser test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+            apps/web/.e2e/api.log
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Icons match the committed logo
         run: |
