@@ -76,6 +76,22 @@ export const EnvObjectSchema = z.object({
 
   // Public URL of the web app, used for links in emails.
   WEB_APP_URL: optional(z.url({ protocol: /^https?$/ })),
+
+  // University email domains accepted for students (§4.2), comma-separated.
+  // Subdomains match too (e.g. std.agr.asu.edu.eg).
+  UNIVERSITY_EMAIL_DOMAINS: z
+    .preprocess(blankToUndefined, z.string().default('agr.asu.edu.eg'))
+    .transform((value) =>
+      value
+        .split(',')
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean),
+    )
+    .pipe(
+      z
+        .array(z.string().regex(/^(?=.{1,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/, 'must be domain names'))
+        .min(1, 'must list at least one domain'),
+    ),
 });
 
 /** Variables that must be present whenever NODE_ENV=production. */

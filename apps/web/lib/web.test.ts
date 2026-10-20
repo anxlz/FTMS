@@ -1,4 +1,17 @@
-import { API_ERROR_CODES, PERMISSION_KEYS, ROLES, ROLE_DEFAULT_PERMISSIONS } from '@ftms/core';
+import {
+  API_ERROR_CODES,
+  IMPORT_COLUMNS,
+  IMPORT_ROW_ACTIONS,
+  IMPORT_ROW_ERRORS,
+  IMPORT_STATUSES,
+  MEMBERSHIP_SOURCES,
+  PERMISSION_KEYS,
+  PROTECTED_PROFILE_FIELDS,
+  REQUEST_STATUSES,
+  ROLES,
+  ROLE_DEFAULT_PERMISSIONS,
+  VERIFICATION_ISSUES,
+} from '@ftms/core';
 import { describe, expect, it } from 'vitest';
 import ar from '../messages/ar.json';
 import en from '../messages/en.json';
@@ -30,6 +43,24 @@ describe('message catalogs', () => {
         expect(lookup(catalog, `roles.${role}`)).toEqual(expect.any(String));
       for (const key of PERMISSION_KEYS)
         expect(lookup(catalog, permissionMessageKey(key))).toEqual(expect.any(String));
+    }
+  });
+
+  it('translate every Phase 2 code: import rows, statuses, issues, columns', () => {
+    const required = [
+      ...IMPORT_ROW_ERRORS.map((c) => `importErrors.${c}`),
+      ...IMPORT_ROW_ACTIONS.map((c) => `imports.action.${c}`),
+      ...IMPORT_STATUSES.map((c) => `imports.status.${c}`),
+      ...IMPORT_COLUMNS.map((c) => `imports.columnNames.${c}`),
+      ...PROTECTED_PROFILE_FIELDS.map((c) => `imports.columnNames.${c}`),
+      ...REQUEST_STATUSES.map((c) => `reviews.statuses.${c}`),
+      ...VERIFICATION_ISSUES.map((c) => `reviews.issues.${c}`),
+      ...VERIFICATION_ISSUES.map((c) => `reviews.issueHints.${c}`),
+      ...MEMBERSHIP_SOURCES.map((c) => `students.sources.${c}`),
+    ];
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of required)
+        expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
     }
   });
 
@@ -105,8 +136,10 @@ describe('navigation per role (§18.2)', () => {
     const items = nav('FACULTY');
     expect(items).toEqual(
       expect.arrayContaining([
+        'students',
         'visits',
         'groups',
+        'reviewQueues',
         'attendance',
         'tickets',
         'groupSwaps',
@@ -130,8 +163,16 @@ describe('navigation per role (§18.2)', () => {
 
   it('links only to pages that exist; later-phase items carry their phase', () => {
     for (const item of navigationFor({ role: 'SUPER_ADMIN', permissions: [...PERMISSION_KEYS] })) {
-      if (item.href) expect(['/dashboard', '/profile', '/admin/users']).toContain(item.href);
-      else expect(item.phase).toBeGreaterThanOrEqual(2);
+      if (item.href) {
+        expect([
+          '/dashboard',
+          '/profile',
+          '/admin/users',
+          '/students',
+          '/groups',
+          '/reviews',
+        ]).toContain(item.href);
+      } else expect(item.phase).toBeGreaterThanOrEqual(3);
     }
   });
 });

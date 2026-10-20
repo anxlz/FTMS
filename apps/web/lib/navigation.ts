@@ -15,7 +15,8 @@ export interface NavItem {
 }
 
 interface StaffEntry extends NavItem {
-  permission?: PermissionKey;
+  /** Shown when the account holds at least one of these. */
+  anyOf?: PermissionKey[];
 }
 
 const STUDENT_NAV: NavItem[] = [
@@ -29,25 +30,26 @@ const STUDENT_NAV: NavItem[] = [
 
 const STAFF_NAV: StaffEntry[] = [
   { key: 'dashboard', href: '/dashboard' },
-  { key: 'visits', phase: 3, permission: 'visits.manage' },
+  { key: 'students', href: '/students', anyOf: ['students.read'] },
+  { key: 'visits', phase: 3, anyOf: ['visits.manage'] },
   { key: 'calendar', phase: 3 },
-  { key: 'groups', phase: 2, permission: 'groups.manage' },
-  { key: 'attendance', phase: 4, permission: 'attendance.read' },
-  { key: 'tickets', phase: 5, permission: 'tickets.process' },
-  { key: 'groupSwaps', phase: 5, permission: 'group_swaps.decide' },
-  { key: 'schedule', phase: 3, permission: 'schedule.manage' },
-  { key: 'reviewQueues', phase: 5, permission: 'profile_changes.decide' },
-  { key: 'activityLogs', phase: 6, permission: 'audit.read' },
-  { key: 'reports', phase: 6, permission: 'reports.export' },
-  { key: 'users', href: '/admin/users', permission: 'users.read' },
-  { key: 'settings', phase: 4, permission: 'attendance.settings.visit' },
+  { key: 'groups', href: '/groups', anyOf: ['students.read', 'groups.manage'] },
+  { key: 'attendance', phase: 4, anyOf: ['attendance.read'] },
+  { key: 'tickets', phase: 5, anyOf: ['tickets.process'] },
+  { key: 'groupSwaps', phase: 5, anyOf: ['group_swaps.decide'] },
+  { key: 'schedule', phase: 3, anyOf: ['schedule.manage'] },
+  { key: 'reviewQueues', href: '/reviews', anyOf: ['profile_changes.decide', 'students.manage'] },
+  { key: 'activityLogs', phase: 6, anyOf: ['audit.read'] },
+  { key: 'reports', phase: 6, anyOf: ['reports.export'] },
+  { key: 'users', href: '/admin/users', anyOf: ['users.read'] },
+  { key: 'settings', phase: 4, anyOf: ['attendance.settings.visit'] },
   { key: 'profile', href: '/profile' },
 ];
 
 export function navigationFor(user: Pick<MeResponse, 'role' | 'permissions'>): NavItem[] {
   if (user.role === 'STUDENT') return STUDENT_NAV;
   const held = new Set<string>(user.permissions);
-  return STAFF_NAV.filter((item) => !item.permission || held.has(item.permission)).map(
-    ({ permission: _permission, ...item }) => item,
+  return STAFF_NAV.filter((item) => !item.anyOf || item.anyOf.some((p) => held.has(p))).map(
+    ({ anyOf: _anyOf, ...item }) => item,
   );
 }

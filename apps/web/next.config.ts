@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
   // Pin the workspace root so Turbopack resolves `@ftms/*` packages from the monorepo.
   turbopack: { root: monorepoRoot },
   outputFileTracingRoot: monorepoRoot,
+  experimental: {
+    // Student spreadsheets go through a server action (§4.1). The API accepts up to
+    // 4 MB (Vercel limits function bodies to 4.5 MB); allow the multipart overhead.
+    serverActions: { bodySizeLimit: '5mb' },
+  },
 };
 
 export default withNextIntl(nextConfig);

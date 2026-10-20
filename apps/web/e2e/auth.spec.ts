@@ -1,33 +1,13 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { type BrowserContext, expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { ADMIN_EMAIL, codeFor, input, STATE, preferEnglish } from './helpers';
 
-const STATE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.e2e');
-const ADMIN_EMAIL = 'st22425244@agr.asu.edu.eg';
 const ADMIN_NEW_PASSWORD = 'nile delta harvest 2026';
 
 const oneTimePassword = (): string =>
   (JSON.parse(readFileSync(path.join(STATE, 'super-admin.json'), 'utf8')) as { password: string })
     .password;
-
-const input = (page: Page, name: string) => page.locator(`input[name="${name}"]`);
-
-/** Latest 6-digit code the API "sent" to `email` (development mail log). */
-async function codeFor(email: string): Promise<string> {
-  for (let i = 0; i < 40; i += 1) {
-    const log = readFileSync(path.join(STATE, 'api.log'), 'utf8');
-    const at = log.lastIndexOf(`Logged email body for ${email}`);
-    const code = at >= 0 ? /\b(\d{6})\b/.exec(log.slice(at))?.[1] : undefined;
-    if (code) return code;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`No code was mailed to ${email}`);
-}
-
-async function useEnglish(context: BrowserContext) {
-  await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: 'http://localhost:3100' }]);
-}
 
 test.describe.serial('authentication in the browser (§4.3, §2)', () => {
   test('Super Admin: the generated password works once and must be replaced (Phase 1 DoD)', async ({
@@ -113,7 +93,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     page,
     browser,
   }) => {
-    await useEnglish(page.context());
+    await preferEnglish(page.context());
     await page.goto('/login');
     await input(page, 'identifier').fill(ADMIN_EMAIL);
     await input(page, 'password').fill(ADMIN_NEW_PASSWORD);
@@ -127,7 +107,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
 
     // A shared lab computer: an English cookie left behind by a previous user.
     const faculty = await browser.newContext();
-    await useEnglish(faculty);
+    await preferEnglish(faculty);
     const fp = await faculty.newPage();
     await fp.goto('/login');
     // Without a password, email + password cannot get in.

@@ -8,7 +8,7 @@ import { type AuthMethod, type Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { USER_INCLUDE, type UserWithRelations } from '../users/user-mapping';
 import { AUTH } from './auth.constants';
-import { actorOfUser } from './principal';
+import { actorOfUser, isUsableStatus } from './principal';
 import { type RefreshClaims, TokenService } from './token.service';
 
 export type SessionRevokeReason =
@@ -17,7 +17,8 @@ export type SessionRevokeReason =
   | 'password_reset'
   | 'account_suspended'
   | 'refresh_reuse'
-  | 'admin_reset';
+  | 'admin_reset'
+  | 'account_unlinked';
 
 /**
  * Sessions are rows; refresh tokens are signed JWTs whose id (`jti`) is stored
@@ -67,7 +68,7 @@ export class SessionService {
       });
       if (!session || session.userId !== claims.sub) throw Errors.sessionInvalid();
       if (session.revokedAt !== null || session.expiresAt <= now) throw Errors.sessionInvalid();
-      if (session.user.status !== 'ACTIVE') {
+      if (!isUsableStatus(session.user.status)) {
         await this.revoke(session.id, 'account_suspended');
         throw Errors.sessionInvalid();
       }

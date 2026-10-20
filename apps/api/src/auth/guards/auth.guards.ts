@@ -7,6 +7,7 @@ import { Errors } from '../../common/api-exception';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe';
 import {
   ALLOW_PENDING_PASSWORD,
+  ALLOW_PENDING_VERIFICATION,
   IS_PUBLIC,
   PERMISSIONS_KEY,
   type PermissionRequirement,
@@ -21,7 +22,7 @@ const principalOf = (context: ExecutionContext): AuthPrincipal | undefined =>
   context.switchToHttp().getRequest<Request & { user?: AuthPrincipal }>().user;
 
 /**
- * Global guard 1/4 — authentication. Every route requires a valid bearer token
+ * Global guard 1/5 — authentication. Every route requires a valid bearer token
  * unless marked `@Public()`.
  */
 @Injectable()
@@ -43,7 +44,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 }
 
 /**
- * Global guard 2/4 — an account that must set or change its password can only
+ * Global guard 2/5 — an account that must set or change its password can only
  * reach the routes needed to do that (§2 Super Admin bootstrap, §4.3 first login).
  */
 @Injectable()
@@ -58,7 +59,23 @@ export class PasswordSetupGuard implements CanActivate {
   }
 }
 
-/** Global guard 3/4 — `@Roles(...)`. */
+/**
+ * Global guard 3/5 — a student account waiting for verification (§4.2 Case B)
+ * can only reach the routes marked `@AllowPendingVerification()`.
+ */
+@Injectable()
+export class VerificationGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const principal = principalOf(context);
+    if (!principal || principal.status !== 'PENDING_VERIFICATION') return true;
+    if (metadata<boolean>(this.reflector, ALLOW_PENDING_VERIFICATION, context)) return true;
+    throw Errors.accountPending();
+  }
+}
+
+/** Global guard 4/5 — `@Roles(...)`. */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -73,7 +90,7 @@ export class RolesGuard implements CanActivate {
   }
 }
 
-/** Global guard 4/4 — `@RequirePermissions(...)` / `@RequireAnyPermission(...)`. */
+/** Global guard 5/5 — `@RequirePermissions(...)` / `@RequireAnyPermission(...)`. */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

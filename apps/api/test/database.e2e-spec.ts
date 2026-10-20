@@ -156,6 +156,7 @@ describe('Database structure (real Postgres)', () => {
     await expect(
       prisma.authChallenge.create({
         data: {
+          email: faculty.email,
           userId: faculty.id,
           purpose: 'LOGIN',
           codeHash: 'x'.repeat(64),

@@ -1,6 +1,7 @@
 import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { type AuthResponse, type Role } from '@ftms/core';
+import { type CellValue, Workbook } from 'exceljs';
 import request from 'supertest';
 import { type App } from 'supertest/types';
 import { configureApp } from '../../src/app.factory';
@@ -55,6 +56,11 @@ const TRUNCATE = [
   'auth_challenges',
   'auth_sessions',
   'user_permission_grants',
+  'profile_change_requests',
+  'student_verification_requests',
+  'student_imports',
+  'group_memberships',
+  'training_groups',
   'student_profiles',
   'faculty_profiles',
   'users',
@@ -104,7 +110,9 @@ export async function createUser(
   const email = options.email ?? `${role.toLowerCase().replace('_', '-')}${counter}@agr.asu.edu.eg`;
   const password =
     options.password === undefined ? `correct horse ${counter} battery` : options.password;
-  const seatNumber = role === 'STUDENT' ? (options.seatNumber ?? `S${1000 + counter}`) : undefined;
+  // A student waiting for verification has no record yet (§4.2 Case B).
+  const withRecord = role === 'STUDENT' && options.status !== 'PENDING_VERIFICATION';
+  const seatNumber = withRecord ? (options.seatNumber ?? `S${1000 + counter}`) : undefined;
   const user = await prisma.user.create({
     data: {
       email,
@@ -113,15 +121,117 @@ export async function createUser(
       displayName: `Test ${role} ${counter}`,
       passwordHash: password ? await hashPassword(password) : null,
       mustChangePassword: options.mustChangePassword ?? false,
+      emailVerifiedAt: new Date(),
       ...(role === 'STUDENT'
-        ? {
-            studentProfile: { create: { seatNumber: seatNumber!, fullName: `Student ${counter}` } },
-          }
+        ? withRecord
+          ? {
+              studentProfile: {
+                create: {
+                  seatNumber: seatNumber!,
+                  fullName: `Student ${counter}`,
+                  universityEmail: email,
+                  linkedAt: new Date(),
+                },
+              },
+            }
+          : {}
         : { facultyProfile: { create: { fullName: `Staff ${counter}` } } }),
     },
   });
   return { id: user.id, email, password, role, seatNumber };
 }
+
+export interface SeededRecord {
+  id: string;
+  seatNumber: string;
+  fullName: string;
+  universityEmail: string | null;
+}
+
+/** Inserts an unlinked student record, as an import would. */
+export async function createStudentRecord(
+  app: TestApp,
+  options: {
+    seatNumber?: string;
+    fullName?: string;
+    parts?: [string, string, string, string];
+    universityEmail?: string | null;
+    phone?: string | null;
+  } = {},
+): Promise<SeededRecord> {
+  counter += 1;
+  const prisma = app.get(PrismaService);
+  const parts = options.parts;
+  const record = await prisma.studentProfile.create({
+    data: {
+      seatNumber: options.seatNumber ?? `R${2000 + counter}`,
+      fullName: parts ? parts.join(' ') : (options.fullName ?? `Record Student ${counter}`),
+      ...(parts
+        ? {
+            firstName: parts[0],
+            fatherName: parts[1],
+            grandfatherName: parts[2],
+            familyName: parts[3],
+          }
+        : {}),
+      universityEmail: options.universityEmail ?? null,
+      phone: options.phone ?? null,
+    },
+  });
+  return {
+    id: record.id,
+    seatNumber: record.seatNumber,
+    fullName: record.fullName,
+    universityEmail: record.universityEmail,
+  };
+}
+
+export async function createGroup(
+  app: TestApp,
+  name?: string,
+): Promise<{ id: string; name: string }> {
+  counter += 1;
+  const group = await app
+    .get(PrismaService)
+    .trainingGroup.create({ data: { name: name ?? `Group ${counter}` } });
+  return { id: group.id, name: group.name };
+}
+
+export async function addToGroup(app: TestApp, studentId: string, groupId: string): Promise<void> {
+  await app
+    .get(PrismaService)
+    .groupMembership.create({ data: { studentId, groupId, source: 'MANUAL' } });
+}
+
+/** The record id linked to an account. */
+export async function recordOf(app: TestApp, userId: string): Promise<string> {
+  return (await app.get(PrismaService).studentProfile.findUniqueOrThrow({ where: { userId } })).id;
+}
+
+/** An .xlsx file: one header row, then the given rows. Cells may be any exceljs value. */
+export async function buildWorkbook(
+  headers: string[],
+  rows: CellValue[][],
+  sheetName = 'Students',
+): Promise<Buffer> {
+  const workbook = new Workbook();
+  const sheet = workbook.addWorksheet(sheetName);
+  sheet.addRow(headers);
+  for (const row of rows) sheet.addRow(row);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+/** Template-style headers in the template's column order. */
+export const TEMPLATE_HEADERS = [
+  'رقم الجلوس / Seat number',
+  'الاسم الأول / First name',
+  "اسم الأب / Father's name",
+  "اسم الجد / Grandfather's name",
+  'اسم العائلة / Family name',
+  'البريد الجامعي / University email',
+  'المجموعة / Group',
+  'رقم الهاتف / Phone',
+];
 
 export async function login(
   app: TestApp,

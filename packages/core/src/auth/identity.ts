@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { toWesternDigits } from '../text';
 
 /**
  * Identity normalization shared by every surface. Emails are compared
@@ -8,8 +9,9 @@ import { z } from 'zod';
  */
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-/** Seat numbers are compared trimmed and uppercased. */
-export const normalizeSeatNumber = (seat: string): string => seat.trim().toUpperCase();
+/** Seat numbers are compared trimmed, uppercased and with Western digits. */
+export const normalizeSeatNumber = (seat: string): string =>
+  toWesternDigits(seat).trim().toUpperCase();
 
 export const SEAT_NUMBER_PATTERN = /^[A-Z0-9-]{1,20}$/;
 
@@ -25,6 +27,21 @@ export const SeatNumberSchema = z
   .trim()
   .transform(normalizeSeatNumber)
   .pipe(z.string().regex(SEAT_NUMBER_PATTERN, { error: 'SEAT_NUMBER_INVALID' }));
+
+/** Domain part of a normalized email address. */
+export const emailDomain = (email: string): string => email.slice(email.lastIndexOf('@') + 1);
+
+/**
+ * University email check (§4.2): the domain, or a subdomain of it, is one of the
+ * configured university domains (API setting `UNIVERSITY_EMAIL_DOMAINS`).
+ */
+export function isUniversityEmail(email: string, domains: readonly string[]): boolean {
+  const domain = emailDomain(normalizeEmail(email));
+  return domains.some((allowed) => {
+    const d = allowed.trim().toLowerCase();
+    return d !== '' && (domain === d || domain.endsWith(`.${d}`));
+  });
+}
 
 /** Login identifier: an email (contains "@") or a seat number. */
 export type LoginIdentifier =

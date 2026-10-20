@@ -64,6 +64,7 @@ function PasswordForm() {
       <SubmitButton>{t('submit')}</SubmitButton>
       <p className="row-between">
         <Link href="/forgot-password">{t('forgot')}</Link>
+        <Link href="/signup">{t('signup')}</Link>
       </p>
       <p className="muted small">{t('firstTime')}</p>
     </form>

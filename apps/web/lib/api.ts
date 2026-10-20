@@ -40,10 +40,11 @@ export function clientIpFrom(h: Headers): string | null {
 export async function apiFetch<T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST' | 'PATCH' | 'PUT';
+    method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
     body?: unknown;
     accessToken?: string | null;
     clientIp?: string | null;
+    timeoutMs?: number;
   } = {},
 ): Promise<ApiResult<T>> {
   const base = apiBaseUrl();
@@ -67,12 +68,15 @@ export async function apiFetch<T>(
       headers: requestHeaders,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
     });
   } catch {
     return { ok: false, status: 0, code: 'NETWORK' };
   }
+  return readResult<T>(res);
+}
 
+async function readResult<T>(res: Response): Promise<ApiResult<T>> {
   if (res.status === 204) return { ok: true, status: 204, data: undefined as T };
   const json: unknown = await res.json().catch(() => null);
   if (res.ok) return { ok: true, status: res.status, data: json as T };
@@ -87,6 +91,59 @@ export async function apiFetch<T>(
         retryAfterSeconds: error.data.retryAfterSeconds,
       }
     : { ok: false, status: res.status, code: 'INTERNAL_ERROR' };
+}
+
+/** Forwards a multipart upload (e.g. a spreadsheet) to the API. */
+export async function apiUpload<T>(
+  path: string,
+  form: FormData,
+  accessToken: string | null,
+): Promise<ApiResult<T>> {
+  const base = apiBaseUrl();
+  if (!base) return { ok: false, status: 0, code: 'NETWORK' };
+  const headers = await forwardingHeaders(accessToken);
+  try {
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(60_000),
+    });
+    return await readResult<T>(res);
+  } catch {
+    return { ok: false, status: 0, code: 'NETWORK' };
+  }
+}
+
+/** Raw response for a file download (e.g. the import template). */
+export async function apiDownload(
+  path: string,
+  accessToken: string | null,
+): Promise<Response | null> {
+  const base = apiBaseUrl();
+  if (!base) return null;
+  try {
+    return await fetch(`${base}${path}`, {
+      headers: await forwardingHeaders(accessToken),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function forwardingHeaders(accessToken: string | null): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+  const secret = process.env.BFF_SHARED_SECRET;
+  const ip = clientIpFrom(await headersOrEmpty());
+  if (secret && ip) {
+    headers[CLIENT_IP_HEADER] = ip;
+    headers[PROXY_KEY_HEADER] = secret;
+  }
+  return headers;
 }
 
 /** `headers()` is unavailable outside a request (e.g. in tests); treat that as no headers. */

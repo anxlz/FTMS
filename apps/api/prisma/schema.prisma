@@ -1,8 +1,10 @@
 // FTMS database schema — Supabase Postgres via Prisma ORM.
 //
-// Phase 1 defines the identity, authorization and audit foundation (§16).
-// Feature entities (groups, visits, attendance, tickets, swaps, …) arrive with
-// the phase that implements them, each through its own migration.
+// Phase 1: identity, authorization and audit foundation (§16).
+// Phase 2: student records, training groups and memberships, spreadsheet
+// imports, account-verification and profile-change requests.
+// Later feature entities (visits, attendance, tickets, swaps, …) arrive with the
+// phase that implements them, each through its own migration.
 //
 // Constraints Prisma cannot express (lowercase-email CHECKs, the append-only
 // audit trigger, Row Level Security) live in the migration SQL and are covered
@@ -60,36 +62,61 @@ model User {
 
   createdBy      User?                 @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdUsers   User[]                @relation("UserCreatedBy")
-  studentProfile StudentProfile?
+  studentProfile StudentProfile?       @relation("StudentAccount")
   facultyProfile FacultyProfile?
   sessions       AuthSession[]
   challenges     AuthChallenge[]
   grants         UserPermissionGrant[] @relation("GrantSubject")
   grantsGiven    UserPermissionGrant[] @relation("GrantGrantor")
 
+  studentsCreated         StudentProfile[]             @relation("StudentCreatedBy")
+  groupsCreated           TrainingGroup[]              @relation("GroupCreatedBy")
+  membershipsAssigned     GroupMembership[]            @relation("MembershipAssignedBy")
+  membershipsEnded        GroupMembership[]            @relation("MembershipEndedBy")
+  importsCreated          StudentImport[]              @relation("ImportCreatedBy")
+  importsCommitted        StudentImport[]              @relation("ImportCommittedBy")
+  verificationRequests    StudentVerificationRequest[] @relation("VerificationAccount")
+  verificationsDecided    StudentVerificationRequest[] @relation("VerificationDecidedBy")
+  profileChangesRequested ProfileChangeRequest[]       @relation("ProfileChangeRequestedBy")
+  profileChangesDecided   ProfileChangeRequest[]       @relation("ProfileChangeDecidedBy")
+
   @@index([role, status])
   @@map("users")
 }
 
-/// Authoritative academic record of a student. Exists before any account
-/// (faculty imports it in Phase 2); `userId` is set when an account is linked.
+/// Authoritative academic record of a student (§4.1). Exists before any account:
+/// faculty import or create it; `userId` is set when the student's account is
+/// linked (§4.2 Case A, §4.3 first login, or an approved verification request).
 model StudentProfile {
-  id              String   @id @default(uuid(7)) @db.Uuid
-  userId          String?  @unique @map("user_id") @db.Uuid
-  /// Normalized (trimmed, uppercase).
-  seatNumber      String   @unique @map("seat_number") @db.VarChar(20)
-  fullName        String   @map("full_name") @db.VarChar(200)
-  firstName       String?  @map("first_name") @db.VarChar(60)
-  fatherName      String?  @map("father_name") @db.VarChar(60)
-  grandfatherName String?  @map("grandfather_name") @db.VarChar(60)
-  familyName      String?  @map("family_name") @db.VarChar(60)
-  /// University email on the imported record (may be missing, §4.1). Normalized lowercase.
-  universityEmail String?  @unique @map("university_email") @db.VarChar(254)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id              String    @id @default(uuid(7)) @db.Uuid
+  userId          String?   @unique @map("user_id") @db.Uuid
+  /// Normalized (trimmed, uppercase, Western digits).
+  seatNumber      String    @unique @map("seat_number") @db.VarChar(20)
+  fullName        String    @map("full_name") @db.VarChar(200)
+  firstName       String?   @map("first_name") @db.VarChar(60)
+  fatherName      String?   @map("father_name") @db.VarChar(60)
+  grandfatherName String?   @map("grandfather_name") @db.VarChar(60)
+  familyName      String?   @map("family_name") @db.VarChar(60)
+  /// University email on the record (may be missing, §4.1). Normalized lowercase.
+  universityEmail String?   @unique @map("university_email") @db.VarChar(254)
+  /// Self-service field (§4.4): the student may change it directly.
+  phone           String?   @db.VarChar(20)
+  /// Search key derived from `fullName` by a database trigger (spelling variants,
+  /// diacritics and spacing removed, see `ftms_name_key`). Never written by the app.
+  nameKey         String    @default("") @map("name_key") @db.VarChar(200)
+  linkedAt        DateTime? @map("linked_at") @db.Timestamptz(3)
+  createdById     String?   @map("created_by_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user                User?                        @relation("StudentAccount", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy           User?                        @relation("StudentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  memberships         GroupMembership[]
+  profileChanges      ProfileChangeRequest[]
+  verificationsLinked StudentVerificationRequest[]
 
+  @@index([fullName])
+  @@index([nameKey])
   @@map("student_profiles")
 }
 
@@ -172,12 +199,18 @@ model AuthSession {
 enum ChallengePurpose {
   LOGIN
   PASSWORD_RESET
+  SIGNUP
 }
 
-/// Emailed one-time codes (first login, password recovery). Only an HMAC of the code is stored.
+/// Emailed one-time codes (first login, password recovery, signup). Keyed by the
+/// email address, because a code can be sent before any account exists (first
+/// login of an imported student, §4.3; signup, §4.2). Only an HMAC of the code is stored.
 model AuthChallenge {
   id          String           @id @default(uuid(7)) @db.Uuid
-  userId      String           @map("user_id") @db.Uuid
+  /// Normalized (lowercase) recipient address.
+  email       String           @db.VarChar(254)
+  /// The account the code was issued for, when one existed at the time.
+  userId      String?          @map("user_id") @db.Uuid
   purpose     ChallengePurpose
   codeHash    String           @map("code_hash") @db.Char(64)
   expiresAt   DateTime         @map("expires_at") @db.Timestamptz(3)
@@ -187,9 +220,10 @@ model AuthChallenge {
   createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   requestIp   String?          @map("request_ip") @db.VarChar(64)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, purpose, createdAt])
+  @@index([email, purpose, createdAt])
+  @@index([userId])
   @@map("auth_challenges")
 }
 
@@ -223,4 +257,161 @@ model AuditLog {
   @@index([resourceType, resourceId])
   @@index([action, occurredAt])
   @@map("audit_logs")
+}
+
+/**
+ * ═══════════════════════════ Phase 2 ═══════════════════════════
+ */
+
+/// A training group (§5). Names are unique ignoring case and spacing (SQL index).
+/// Archived groups keep their history but accept no members.
+model TrainingGroup {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  name        String    @db.VarChar(100)
+  description String?   @db.VarChar(500)
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdById String?   @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  createdBy   User?             @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  memberships GroupMembership[]
+
+  @@map("training_groups")
+}
+
+enum MembershipSource {
+  MANUAL
+  IMPORT
+  VERIFICATION
+}
+
+/// A student's membership in a group over time. At most ONE active membership
+/// (`endedAt IS NULL`) per student — enforced by a partial unique index (§5, §16.1).
+/// Ended memberships are history and cannot be modified (trigger).
+model GroupMembership {
+  id           String           @id @default(uuid(7)) @db.Uuid
+  studentId    String           @map("student_id") @db.Uuid
+  groupId      String           @map("group_id") @db.Uuid
+  source       MembershipSource
+  startedAt    DateTime         @default(now()) @map("started_at") @db.Timestamptz(3)
+  endedAt      DateTime?        @map("ended_at") @db.Timestamptz(3)
+  assignedById String?          @map("assigned_by_id") @db.Uuid
+  endedById    String?          @map("ended_by_id") @db.Uuid
+
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group      TrainingGroup  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  assignedBy User?          @relation("MembershipAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  endedBy    User?          @relation("MembershipEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+
+  @@index([groupId, endedAt])
+  @@index([studentId, startedAt])
+  @@map("group_memberships")
+}
+
+enum ImportStatus {
+  PREVIEW
+  COMMITTED
+  DISCARDED
+}
+
+/// One uploaded spreadsheet (§4.1). `rows` holds the normalized cell values; the
+/// plan (create/update/unchanged/error per row) is recomputed against the live
+/// database for every preview and again inside the commit transaction.
+model StudentImport {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  status         ImportStatus @default(PREVIEW)
+  fileName       String       @map("file_name") @db.VarChar(255)
+  fileSize       Int          @map("file_size")
+  fileSha256     String       @map("file_sha256") @db.Char(64)
+  /// Object path in the private `student-imports` bucket (null when Storage is not configured).
+  storagePath    String?      @map("storage_path") @db.VarChar(512)
+  rows           Json
+  ignoredColumns Json         @map("ignored_columns")
+  createdById    String?      @map("created_by_id") @db.Uuid
+  createdByName  String       @map("created_by_name") @db.VarChar(200)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(3)
+  committedAt    DateTime?    @map("committed_at") @db.Timestamptz(3)
+  committedById  String?      @map("committed_by_id") @db.Uuid
+  discardedAt    DateTime?    @map("discarded_at") @db.Timestamptz(3)
+  /// Plan counts at the last preview / at commit.
+  summary        Json
+  /// Counts of what the commit actually did.
+  result         Json?
+
+  createdBy   User? @relation("ImportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  committedBy User? @relation("ImportCommittedBy", fields: [committedById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("student_imports")
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum VerificationIssue {
+  NO_RECORD
+  SEAT_ALREADY_LINKED
+  DETAILS_MISMATCH
+  EMAIL_ON_OTHER_RECORD
+}
+
+/// §4.2 Case B: a verified-email signup that did not match an imported record.
+/// The account stays PENDING_VERIFICATION (no access to academic data) until a
+/// reviewer links it to a record or creates one. One open request per account.
+model StudentVerificationRequest {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  userId          String            @map("user_id") @db.Uuid
+  seatNumber      String            @map("seat_number") @db.VarChar(20)
+  firstName       String            @map("first_name") @db.VarChar(60)
+  fatherName      String            @map("father_name") @db.VarChar(60)
+  grandfatherName String            @map("grandfather_name") @db.VarChar(60)
+  familyName      String            @map("family_name") @db.VarChar(60)
+  fullName        String            @map("full_name") @db.VarChar(200)
+  issue           VerificationIssue
+  status          RequestStatus     @default(PENDING)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt       DateTime?         @map("decided_at") @db.Timestamptz(3)
+  decidedById     String?           @map("decided_by_id") @db.Uuid
+  decisionReason  String?           @map("decision_reason") @db.VarChar(500)
+  /// The record the account was linked to (or created) on approval.
+  studentId       String?           @map("student_id") @db.Uuid
+
+  user      User            @relation("VerificationAccount", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy User?           @relation("VerificationDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  student   StudentProfile? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("student_verification_requests")
+}
+
+/// §4.4: a student's request to change protected identity fields (name parts,
+/// seat number). `current` is a snapshot at submission, `proposed` only the
+/// changed fields. Applied atomically on approval. One open request per student.
+model ProfileChangeRequest {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  studentId      String        @map("student_id") @db.Uuid
+  requestedById  String?       @map("requested_by_id") @db.Uuid
+  status         RequestStatus @default(PENDING)
+  current        Json
+  proposed       Json
+  note           String        @db.VarChar(500)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime?     @map("decided_at") @db.Timestamptz(3)
+  decidedById    String?       @map("decided_by_id") @db.Uuid
+  decisionReason String?       @map("decision_reason") @db.VarChar(500)
+
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  requestedBy User?          @relation("ProfileChangeRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedBy   User?          @relation("ProfileChangeDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([studentId, createdAt])
+  @@map("profile_change_requests")
 }

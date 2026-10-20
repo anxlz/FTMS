@@ -1,7 +1,13 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { type InputHTMLAttributes, useId, useState } from 'react';
+import {
+  type InputHTMLAttributes,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+  useId,
+  useState,
+} from 'react';
 import { useFormStatus } from 'react-dom';
 import { type FormState } from '@/lib/forms';
 
@@ -98,15 +104,124 @@ export function Field({ label, name, hint, errors, type = 'text', ...input }: Fi
 export function SubmitButton({
   children,
   variant = 'primary',
+  confirm,
+  name,
+  value,
 }: {
   children: React.ReactNode;
   variant?: 'primary' | 'secondary' | 'danger';
+  /** Asks before submitting (destructive actions, §18.3). */
+  confirm?: string;
+  name?: string;
+  value?: string;
 }) {
   const { pending } = useFormStatus();
   const t = useTranslations('common');
   return (
-    <button type="submit" className={`btn btn-${variant}`} disabled={pending} aria-busy={pending}>
+    <button
+      type="submit"
+      className={`btn btn-${variant}`}
+      disabled={pending}
+      aria-busy={pending}
+      name={name}
+      value={value}
+      onClick={(event) => {
+        if (confirm && !window.confirm(confirm)) event.preventDefault();
+      }}
+    >
       {pending ? t('saving') : children}
     </button>
+  );
+}
+
+interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  label: string;
+  name: string;
+  options: { value: string; label: string }[];
+  errors?: string[];
+  hint?: string;
+}
+
+export function SelectField({ label, name, options, errors, hint, ...select }: SelectFieldProps) {
+  const id = useId();
+  return (
+    <div className={`field${errors?.length ? ' field-invalid' : ''}`}>
+      <label htmlFor={id}>{label}</label>
+      <div className="field-control">
+        <select
+          id={id}
+          name={name}
+          aria-invalid={errors?.length ? true : undefined}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          {...select}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {hint && (
+        <p className="field-hint" id={`${id}-hint`}>
+          {hint}
+        </p>
+      )}
+      <FieldErrors id={`${id}-errors`} codes={errors} />
+    </div>
+  );
+}
+
+interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string;
+  name: string;
+  errors?: string[];
+  hint?: string;
+}
+
+export function TextAreaField({ label, name, errors, hint, ...area }: TextAreaFieldProps) {
+  const id = useId();
+  return (
+    <div className={`field${errors?.length ? ' field-invalid' : ''}`}>
+      <label htmlFor={id}>{label}</label>
+      <div className="field-control">
+        <textarea
+          id={id}
+          name={name}
+          rows={3}
+          aria-invalid={errors?.length ? true : undefined}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          {...area}
+        />
+      </div>
+      {hint && (
+        <p className="field-hint" id={`${id}-hint`}>
+          {hint}
+        </p>
+      )}
+      <FieldErrors id={`${id}-errors`} codes={errors} />
+    </div>
+  );
+}
+
+/** Checkbox with its label; used for explicit confirmations. */
+export function CheckboxField({
+  label,
+  name,
+  defaultChecked,
+  hint,
+}: {
+  label: string;
+  name: string;
+  defaultChecked?: boolean;
+  hint?: string;
+}) {
+  const id = useId();
+  return (
+    <div className="field field-check">
+      <input id={id} type="checkbox" name={name} value="true" defaultChecked={defaultChecked} />
+      <label htmlFor={id}>{label}</label>
+      {hint && <p className="field-hint">{hint}</p>}
+    </div>
   );
 }

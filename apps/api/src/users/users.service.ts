@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type AccountStatus,
   canReceiveGrants,
   type CreateUserRequest,
   isStaffRole,
+  isUniversityEmail,
   type ListUsersQuery,
   type ListUsersResponse,
   type MeResponse,
@@ -164,6 +166,14 @@ export class UsersService {
     context: RequestContext,
   ): Promise<UserDetail> {
     this.assertCanManage(principal, input.role);
+    if (
+      input.role === 'STUDENT' &&
+      !isUniversityEmail(input.email, this.config.get('UNIVERSITY_EMAIL_DOMAINS'))
+    ) {
+      throw new ApiException(400, 'EMAIL_NOT_UNIVERSITY', 'Use a university email address', {
+        details: { email: ['EMAIL_NOT_UNIVERSITY'] },
+      });
+    }
 
     if (await this.prisma.user.findUnique({ where: { email: input.email } })) {
       throw conflict('EMAIL_ALREADY_EXISTS');
@@ -267,11 +277,27 @@ export class UsersService {
     this.assertNotSelf(principal, target);
     if (target.status === input.status) return toDetail(target);
 
+    // A student account without a linked record is not verified (§4.2 Case B):
+    // it can be suspended, and reactivating it returns it to the review state —
+    // only the verification review (or a link) makes it ACTIVE.
+    let status: AccountStatus = input.status;
+    if (target.role === 'STUDENT' && !target.studentProfile && input.status === 'ACTIVE') {
+      if (target.status === 'PENDING_VERIFICATION') {
+        throw new ApiException(
+          409,
+          'AUTH_ACCOUNT_PENDING',
+          'Verify this account through the review queue',
+        );
+      }
+      status = 'PENDING_VERIFICATION';
+    }
+    if (target.status === status) return toDetail(target);
+
     await this.prisma.$transaction(async (tx) => {
-      if (input.status === 'SUSPENDED') await this.assertAnotherActiveSuperAdmin(target, tx);
-      await tx.user.update({ where: { id }, data: { status: input.status } });
+      if (status === 'SUSPENDED') await this.assertAnotherActiveSuperAdmin(target, tx);
+      await tx.user.update({ where: { id }, data: { status } });
       const revoked =
-        input.status === 'SUSPENDED'
+        status === 'SUSPENDED'
           ? await this.sessions.revokeAllForUser(id, 'account_suspended', { tx })
           : 0;
       await this.audit.record(
@@ -283,7 +309,7 @@ export class UsersService {
           outcome: 'SUCCESS',
           reason: input.reason,
           before: { status: target.status },
-          after: { status: input.status },
+          after: { status },
           metadata: { sessionsRevoked: revoked },
           context,
         },

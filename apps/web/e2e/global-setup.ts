@@ -8,8 +8,20 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apiDir = path.join(here, '..', '..', 'api');
 const stateDir = path.join(here, '..', '.e2e');
 
-const TABLES =
-  'auth_challenges, auth_sessions, user_permission_grants, student_profiles, faculty_profiles, users, audit_logs';
+const TABLES = [
+  'auth_challenges',
+  'auth_sessions',
+  'user_permission_grants',
+  'profile_change_requests',
+  'student_verification_requests',
+  'student_imports',
+  'group_memberships',
+  'training_groups',
+  'student_profiles',
+  'faculty_profiles',
+  'users',
+  'audit_logs',
+].join(', ');
 
 /**
  * Prepares a clean, known database: wipes account data (disposable test

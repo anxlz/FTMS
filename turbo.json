@@ -49,7 +49,11 @@
         "SMTP_*",
         "JWT_*",
         "QR_HMAC_SECRET",
-        "NEXT_PUBLIC_API_URL"
+        "NEXT_PUBLIC_API_URL",
+        "BFF_SHARED_SECRET",
+        "WEB_APP_URL",
+        "UNIVERSITY_EMAIL_DOMAINS",
+        "API_URL"
       ]
     },
     "@ftms/web#test:e2e": {

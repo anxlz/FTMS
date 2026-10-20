@@ -38,9 +38,31 @@ export function failure(
     retryAfterMinutes: result.retryAfterSeconds
       ? Math.max(1, Math.ceil(result.retryAfterSeconds / 60))
       : undefined,
-    fieldErrors: result.details,
+    fieldErrors: flattenDetails(result.details),
   };
 }
+
+/**
+ * The API reports nested fields as dotted paths (`name.firstName`); forms use
+ * plain input names. Keeps the last segment.
+ */
+export function flattenDetails(
+  details: Record<string, string[]> | undefined,
+): Record<string, string[]> | undefined {
+  if (!details) return undefined;
+  const flat: Record<string, string[]> = {};
+  for (const [key, codes] of Object.entries(details)) {
+    const name = key.split('.').pop() ?? key;
+    flat[name] = [...(flat[name] ?? []), ...codes];
+  }
+  return flat;
+}
+
+/** A trimmed optional value: undefined when empty. */
+export const optional = (data: FormData, name: string): string | undefined => {
+  const value = field(data, name).trim();
+  return value === '' ? undefined : value;
+};
 
 /** Picks the named fields from submitted form data (for re-display after an error). */
 export const echo = (data: FormData, names: string[]): Record<string, string> =>

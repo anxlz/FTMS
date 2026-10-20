@@ -8,7 +8,7 @@ import {
   MeResponseSchema,
 } from '@ftms/core';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { cache } from 'react';
 import { apiFetch } from '../api';
 import { ACCESS_COOKIE, cookieOptions, LOCALE_CHOSEN_COOKIE, REFRESH_COOKIE } from './tokens';
@@ -65,10 +65,29 @@ export const currentUser = cache(async (): Promise<MeResponse | null> => {
   return parsed.success ? parsed.data : null;
 });
 
-/** For pages inside the app shell: signed in, and past any required password step. */
+/**
+ * For pages inside the app shell: signed in, past any required password step,
+ * and verified (a student waiting for review only sees /verification, §4.2).
+ */
 export async function requireUser(): Promise<MeResponse> {
   const user = await currentUser();
   if (!user) redirect('/login');
   if (user.passwordSetupRequired) redirect('/set-password');
+  if (user.status === 'PENDING_VERIFICATION') redirect('/verification');
+  return user;
+}
+
+/** Where a freshly signed-in account goes next. */
+export const homeFor = (user: Pick<MeResponse, 'passwordSetupRequired' | 'status'>): string =>
+  user.passwordSetupRequired
+    ? '/set-password'
+    : user.status === 'PENDING_VERIFICATION'
+      ? '/verification'
+      : '/dashboard';
+
+/** Pages that call `requireUser` and need a permission answer 404 without it. */
+export async function requirePermission(...anyOf: MeResponse['permissions']): Promise<MeResponse> {
+  const user = await requireUser();
+  if (!anyOf.some((p) => user.permissions.includes(p))) notFound();
   return user;
 }

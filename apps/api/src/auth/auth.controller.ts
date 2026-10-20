@@ -15,6 +15,11 @@ import {
   RefreshRequestSchema,
   type ResetPasswordRequest,
   ResetPasswordRequestSchema,
+  type SignupRequest,
+  SignupRequestSchema,
+  type SignupResponse,
+  type SignupVerify,
+  SignupVerifySchema,
   type UpdatePreferencesRequest,
   UpdatePreferencesRequestSchema,
 } from '@ftms/core';
@@ -24,7 +29,12 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { type UserWithRelations } from '../users/user-mapping';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
-import { AllowPendingPasswordSetup, CurrentPrincipal, Public } from './decorators';
+import {
+  AllowPendingPasswordSetup,
+  AllowPendingVerification,
+  CurrentPrincipal,
+  Public,
+} from './decorators';
 import { LocalAuthGuard } from './guards/auth.guards';
 import { type AuthPrincipal } from './principal';
 
@@ -71,6 +81,29 @@ export class AuthController {
     return this.auth.verifyLoginCode(body.email, body.code, context);
   }
 
+  /** Student signup (§4.2), step 1: send a code to the university email. */
+  @Public()
+  @Post('signup/request')
+  @HttpCode(202)
+  async requestSignup(
+    @Body(new ZodValidationPipe(SignupRequestSchema)) body: SignupRequest,
+    @Ctx() context: RequestContext,
+  ): Promise<AcceptedResponse> {
+    await this.auth.requestSignupCode(body, context);
+    return ACCEPTED;
+  }
+
+  /** Signup, step 2: verify the code; link to an imported record or wait for review. */
+  @Public()
+  @Post('signup/verify')
+  @HttpCode(200)
+  verifySignup(
+    @Body(new ZodValidationPipe(SignupVerifySchema)) body: SignupVerify,
+    @Ctx() context: RequestContext,
+  ): Promise<SignupResponse> {
+    return this.auth.verifySignup(body, context);
+  }
+
   @Public()
   @Post('password/forgot')
   @HttpCode(202)
@@ -103,6 +136,7 @@ export class AuthController {
   }
 
   @AllowPendingPasswordSetup()
+  @AllowPendingVerification()
   @Post('logout')
   @HttpCode(204)
   async logout(
@@ -113,6 +147,7 @@ export class AuthController {
   }
 
   @AllowPendingPasswordSetup()
+  @AllowPendingVerification()
   @Get('me')
   me(@CurrentPrincipal() principal: AuthPrincipal): Promise<MeResponse> {
     return this.users.me(principal.userId);
@@ -120,6 +155,7 @@ export class AuthController {
 
   /** Sets the first password or changes the current one. */
   @AllowPendingPasswordSetup()
+  @AllowPendingVerification()
   @Post('password/change')
   @HttpCode(204)
   async changePassword(
@@ -132,6 +168,7 @@ export class AuthController {
 
   /** Language preference (§18.1). Allowed before the password step so the UI language sticks. */
   @AllowPendingPasswordSetup()
+  @AllowPendingVerification()
   @Patch('me/preferences')
   updatePreferences(
     @CurrentPrincipal() principal: AuthPrincipal,

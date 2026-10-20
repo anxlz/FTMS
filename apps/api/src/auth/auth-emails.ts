@@ -74,3 +74,37 @@ export function invitationEmail(params: {
     ].join('\n'),
   };
 }
+
+export function signupCodeEmail(code: string, minutes: number): EmailContent {
+  return {
+    subject: `رمز تأكيد البريد ${code} | Email confirmation code ${code}`,
+    text: [
+      SYSTEM_AR,
+      `رمز تأكيد بريدك الجامعي لإنشاء الحساب: ${code}`,
+      `صالح لمدة ${minutes} دقائق ولمرة واحدة فقط. إذا لم تطلب إنشاء حساب فتجاهل هذه الرسالة.`,
+      '',
+      SYSTEM_EN,
+      `Your code to confirm your university email and create your account: ${code}`,
+      `It is valid for ${minutes} minutes and can be used once. If you did not try to sign up, ignore this email.`,
+    ].join('\n'),
+  };
+}
+
+/** Sent instead of a signup code when the address already has an account (anti-enumeration). */
+export function accountExistsEmail(webAppUrl?: string): EmailContent {
+  const link = webAppUrl ? `${webAppUrl.replace(/\/$/, '')}/login` : null;
+  return {
+    subject: 'لديك حساب بالفعل | You already have an account',
+    text: [
+      SYSTEM_AR,
+      'طُلب إنشاء حساب جديد بهذا البريد، لكن لديك حساب بالفعل.',
+      'سجّل الدخول بكلمة المرور، أو استخدم «نسيت كلمة المرور» لتعيين كلمة جديدة. إذا لم تطلب ذلك فتجاهل هذه الرسالة.',
+      ...(link ? [`رابط الدخول: ${link}`] : []),
+      '',
+      SYSTEM_EN,
+      'Someone asked to create a new account with this email, but you already have one.',
+      'Sign in with your password, or use "Forgot password" to set a new one. If this was not you, ignore this email.',
+      ...(link ? [`Sign in: ${link}`] : []),
+    ].join('\n'),
+  };
+}

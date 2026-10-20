@@ -563,3 +563,114 @@ tbody th {
   align-items: center;
   justify-content: center;
 }
+
+/* ── Phase 2: records, groups, imports, reviews ───────────────────────── */
+textarea {
+  font: inherit;
+  inline-size: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #b8c7d1;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: var(--text);
+  resize: vertical;
+}
+.field-invalid select,
+.field-invalid textarea {
+  border-color: var(--error);
+}
+.field-check {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.field-check input {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+  margin: 0;
+}
+.field-check .field-hint {
+  flex-basis: 100%;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem 1rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+.danger-zone {
+  border-color: #e7c2bd;
+}
+.inline-form {
+  display: inline;
+}
+.cell-errors {
+  margin: 0;
+  padding-inline-start: 1rem;
+  color: var(--error);
+  font-size: 0.875rem;
+}
+.changes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+.changes del {
+  color: var(--error);
+}
+.changes ins {
+  color: var(--ok);
+  text-decoration: none;
+  font-weight: 600;
+}
+.status-pending,
+.status-preview,
+.status-update {
+  color: var(--warn);
+}
+.status-pending::before,
+.status-preview::before,
+.status-update::before {
+  content: '○';
+}
+.status-approved,
+.status-committed,
+.status-create {
+  color: var(--ok);
+}
+.status-approved::before,
+.status-committed::before,
+.status-create::before {
+  content: '●';
+}
+.status-rejected,
+.status-error {
+  color: var(--error);
+}
+.status-rejected::before,
+.status-error::before {
+  content: '■';
+}
+.status-cancelled,
+.status-discarded,
+.status-expired,
+.status-unchanged {
+  color: var(--muted);
+}
+.status-cancelled::before,
+.status-discarded::before,
+.status-expired::before,
+.status-unchanged::before {
+  content: '–';
+}
+a.tab {
+  text-decoration: none;
+  text-align: center;
+}

@@ -12,9 +12,11 @@ import {
   PasswordSetupGuard,
   PermissionsGuard,
   RolesGuard,
+  VerificationGuard,
 } from './guards/auth.guards';
 import { PrincipalService } from './principal';
 import { SessionService } from './session.service';
+import { StudentLinkingService } from './student-linking.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { TokenService } from './token.service';
@@ -28,17 +30,19 @@ import { TokenService } from './token.service';
     ChallengeService,
     PrincipalService,
     SessionService,
+    StudentLinkingService,
     TokenService,
     UsersService,
     JwtStrategy,
     LocalStrategy,
     LocalAuthGuard,
-    // Order matters: authenticate, then password gate, then roles, then permissions.
+    // Order matters: authenticate, password gate, verification gate, roles, permissions.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PasswordSetupGuard },
+    { provide: APP_GUARD, useClass: VerificationGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
-  exports: [UsersService, SessionService],
+  exports: [UsersService, SessionService, StudentLinkingService],
 })
 export class AuthModule {}

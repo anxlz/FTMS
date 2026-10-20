@@ -7,10 +7,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AUTH } from './auth.constants';
 
 /**
- * Emailed one-time codes. Only an HMAC of (user, purpose, code) is stored, so a
- * database leak does not reveal live codes. A code is single-use, expires after
- * `AUTH.codeSeconds`, allows `AUTH.codeMaxAttempts` guesses, and is superseded
- * by any newer code for the same purpose.
+ * Emailed one-time codes, keyed by the recipient address (a code may be sent
+ * before any account exists: first login of an imported student, signup). Only
+ * an HMAC of (email, purpose, code) is stored, so a database leak does not
+ * reveal live codes. A code is single-use, expires after `AUTH.codeSeconds`,
+ * allows `AUTH.codeMaxAttempts` guesses, and is superseded by any newer code for
+ * the same address and purpose.
  */
 @Injectable()
 export class ChallengeService {
@@ -23,29 +25,30 @@ export class ChallengeService {
     this.key = deriveKey(config.get('JWT_ACCESS_SECRET'), 'auth-challenge-code');
   }
 
-  private hash(userId: string, purpose: ChallengePurpose, code: string): string {
-    return hmacSha256Hex(this.key, `${userId}:${purpose}:${code}`);
+  private hash(email: string, purpose: ChallengePurpose, code: string): string {
+    return hmacSha256Hex(this.key, `${email}:${purpose}:${code}`);
   }
 
   /** Creates a new code (invalidating older ones) and returns it for delivery. */
   async issue(
-    userId: string,
+    email: string,
     purpose: ChallengePurpose,
     context: RequestContext,
-    tx?: Prisma.TransactionClient,
+    options: { userId?: string | null; tx?: Prisma.TransactionClient } = {},
   ): Promise<string> {
-    const client = tx ?? this.prisma;
+    const client = options.tx ?? this.prisma;
     const now = new Date();
     await client.authChallenge.updateMany({
-      where: { userId, purpose, consumedAt: null, expiresAt: { gt: now } },
+      where: { email, purpose, consumedAt: null, expiresAt: { gt: now } },
       data: { expiresAt: now },
     });
     const code = randomNumericCode(AUTH.codeDigits);
     await client.authChallenge.create({
       data: {
-        userId,
+        email,
+        userId: options.userId ?? null,
         purpose,
-        codeHash: this.hash(userId, purpose, code),
+        codeHash: this.hash(email, purpose, code),
         expiresAt: new Date(now.getTime() + AUTH.codeSeconds * 1000),
         maxAttempts: AUTH.codeMaxAttempts,
         requestIp: context.ip,
@@ -54,11 +57,11 @@ export class ChallengeService {
     return code;
   }
 
-  /** Consumes the code if it is the live one for this user and purpose. */
-  async consume(userId: string, purpose: ChallengePurpose, code: string): Promise<boolean> {
+  /** Consumes the code if it is the live one for this address and purpose. */
+  async consume(email: string, purpose: ChallengePurpose, code: string): Promise<boolean> {
     const now = new Date();
     const challenge = await this.prisma.authChallenge.findFirst({
-      where: { userId, purpose, consumedAt: null, expiresAt: { gt: now } },
+      where: { email, purpose, consumedAt: null, expiresAt: { gt: now } },
       orderBy: { createdAt: 'desc' },
     });
     if (!challenge || challenge.attempts >= challenge.maxAttempts) return false;
@@ -69,7 +72,7 @@ export class ChallengeService {
       data: { attempts: { increment: 1 } },
     });
     if (counted.count !== 1) return false;
-    if (!safeEqual(this.hash(userId, purpose, code), challenge.codeHash)) return false;
+    if (!safeEqual(this.hash(email, purpose, code), challenge.codeHash)) return false;
 
     const consumed = await this.prisma.authChallenge.updateMany({
       where: { id: challenge.id, consumedAt: null },

@@ -14,6 +14,7 @@ const STATUS_CODES: Record<number, ApiErrorCode> = {
   401: 'AUTH_REQUIRED',
   403: 'FORBIDDEN',
   404: 'NOT_FOUND',
+  413: 'FILE_TOO_LARGE',
   429: 'AUTH_RATE_LIMITED',
 };
 

@@ -1,6 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { type ListUsersResponse, ROLES } from '@ftms/core';
+import {
+  type Group,
+  type ListProfileChangesResponse,
+  type ListStudentsResponse,
+  type ListUsersResponse,
+  type ListVerificationsResponse,
+  type MeResponse,
+  type OwnStudentProfile,
+  ROLES,
+} from '@ftms/core';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api';
 import { accessToken, requireUser } from '@/lib/auth/session';
@@ -12,9 +21,18 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function DashboardPage() {
   const user = await requireUser();
   const t = await getTranslations();
-  const canSeeAccounts = user.permissions.includes('users.read');
+  const token = await accessToken();
+  const has = (p: MeResponse['permissions'][number]) => user.permissions.includes(p);
   // Real counts only — summary cards for visits/attendance arrive with their phases.
-  const counts = canSeeAccounts ? await accountCounts(await accessToken()) : null;
+  const [counts, records, own] = await Promise.all([
+    has('users.read') ? accountCounts(token) : null,
+    has('students.read')
+      ? studentCounts(token, has('profile_changes.decide'), has('students.manage'))
+      : null,
+    user.role === 'STUDENT'
+      ? apiFetch<OwnStudentProfile>('/me/student', { accessToken: token })
+      : null,
+  ]);
 
   return (
     <div className="stack-lg">
@@ -33,6 +51,12 @@ export default async function DashboardPage() {
               <dd dir="ltr">{user.studentProfile.seatNumber}</dd>
             </div>
           )}
+          {own?.ok && (
+            <div>
+              <dt>{t('dashboard.group')}</dt>
+              <dd>{own.data.group?.name ?? t('dashboard.noGroup')}</dd>
+            </div>
+          )}
           <div>
             <dt>{t('dashboard.role')}</dt>
             <dd>{t(`roles.${user.role}`)}</dd>
@@ -43,6 +67,49 @@ export default async function DashboardPage() {
           </div>
         </dl>
       </section>
+
+      {records && (
+        <section className="card" aria-labelledby="students-title">
+          <div className="row-between">
+            <h2 id="students-title">{t('dashboard.studentsTitle')}</h2>
+            <Link href="/students">{t('dashboard.manageStudents')}</Link>
+          </div>
+          <ul className="stat-grid">
+            <li className="stat">
+              <span className="stat-value">{records.total ?? '—'}</span>
+              <span className="stat-label">{t('dashboard.studentsTotal')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{records.unlinked ?? '—'}</span>
+              <span className="stat-label">{t('dashboard.studentsUnlinked')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{records.ungrouped ?? '—'}</span>
+              <span className="stat-label">{t('dashboard.studentsUngrouped')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{records.groups ?? '—'}</span>
+              <span className="stat-label">{t('dashboard.groups')}</span>
+            </li>
+            {records.pendingChanges !== null && (
+              <li className="stat">
+                <span className="stat-value">{records.pendingChanges ?? '—'}</span>
+                <span className="stat-label">
+                  <Link href="/reviews">{t('dashboard.pendingChanges')}</Link>
+                </span>
+              </li>
+            )}
+            {records.pendingVerifications !== null && (
+              <li className="stat">
+                <span className="stat-value">{records.pendingVerifications ?? '—'}</span>
+                <span className="stat-label">
+                  <Link href="/reviews">{t('dashboard.pendingVerifications')}</Link>
+                </span>
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
 
       {counts && (
         <section className="card" aria-labelledby="accounts-title">
@@ -82,4 +149,32 @@ async function accountCounts(
     }),
   );
   return Object.fromEntries(entries.filter(([, n]) => n !== undefined));
+}
+
+/** Student-record figures from the API; `null` where the account may not see them. */
+async function studentCounts(token: string | null, canChanges: boolean, canVerify: boolean) {
+  const total = (query: string) =>
+    apiFetch<ListStudentsResponse>(`/students?pageSize=1${query}`, { accessToken: token }).then(
+      (r) => (r.ok ? r.data.total : undefined),
+    );
+  const [all, unlinked, ungrouped, groups, pendingChanges, pendingVerifications] =
+    await Promise.all([
+      total(''),
+      total('&account=unlinked'),
+      total('&group=none'),
+      apiFetch<Group[]>('/groups', { accessToken: token }).then((r) =>
+        r.ok ? r.data.length : undefined,
+      ),
+      canChanges
+        ? apiFetch<ListProfileChangesResponse>('/profile-changes?status=PENDING&pageSize=1', {
+            accessToken: token,
+          }).then((r) => (r.ok ? r.data.total : undefined))
+        : null,
+      canVerify
+        ? apiFetch<ListVerificationsResponse>('/student-verifications?status=PENDING&pageSize=1', {
+            accessToken: token,
+          }).then((r) => (r.ok ? r.data.total : undefined))
+        : null,
+    ]);
+  return { total: all, unlinked, ungrouped, groups, pendingChanges, pendingVerifications };
 }

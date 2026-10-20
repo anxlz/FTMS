@@ -1,12 +1,18 @@
 'use server';
 
-import { type AcceptedResponse, type AuthResponse, isLocale, LOCALE_COOKIE } from '@ftms/core';
+import {
+  type AcceptedResponse,
+  type AuthResponse,
+  isLocale,
+  LOCALE_COOKIE,
+  type SignupResponse,
+} from '@ftms/core';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { apiFetch } from '../api';
 import { echo, failure, field, type FormState, passwordsMismatch } from '../forms';
-import { accessToken, clearSession, LOCALE_COOKIE_OPTIONS, storeSession } from './session';
+import { accessToken, clearSession, homeFor, LOCALE_COOKIE_OPTIONS, storeSession } from './session';
 import { LOCALE_CHOSEN_COOKIE } from './tokens';
 
 /** Email or seat number + password (§4.3). */
@@ -17,7 +23,7 @@ export async function loginAction(_: FormState, data: FormData): Promise<FormSta
   });
   if (!result.ok) return failure(result, echo(data, ['identifier']));
   await storeSession(result.data);
-  redirect(result.data.user.passwordSetupRequired ? '/set-password' : '/dashboard');
+  redirect(homeFor(result.data.user));
 }
 
 /** First login, step 1: email a one-time code. */
@@ -40,7 +46,42 @@ export async function verifyCodeAction(_: FormState, data: FormData): Promise<Fo
   });
   if (!result.ok) return { ...failure(result), step: 'code', email };
   await storeSession(result.data);
-  redirect(result.data.user.passwordSetupRequired ? '/set-password' : '/dashboard');
+  redirect(homeFor(result.data.user));
+}
+
+const SIGNUP_FIELDS = [
+  'email',
+  'seatNumber',
+  'firstName',
+  'fatherName',
+  'grandfatherName',
+  'familyName',
+] as const;
+
+const signupBody = (data: FormData) =>
+  Object.fromEntries(SIGNUP_FIELDS.map((name) => [name, field(data, name)]));
+
+/** Student signup (§4.2), step 1: details, then a code to the university email. */
+export async function signupRequestAction(_: FormState, data: FormData): Promise<FormState> {
+  const body = signupBody(data);
+  const result = await apiFetch<AcceptedResponse>('/auth/signup/request', {
+    method: 'POST',
+    body,
+  });
+  if (!result.ok) return failure(result, body);
+  return { status: 'success', step: 'code', email: body.email!.trim().toLowerCase(), values: body };
+}
+
+/** Signup, step 2: the code. Linked accounts and pending ones both set a password next. */
+export async function signupVerifyAction(_: FormState, data: FormData): Promise<FormState> {
+  const body = signupBody(data);
+  const result = await apiFetch<SignupResponse>('/auth/signup/verify', {
+    method: 'POST',
+    body: { ...body, code: field(data, 'code') },
+  });
+  if (!result.ok) return { ...failure(result, body), step: 'code', email: body.email };
+  await storeSession(result.data);
+  redirect(homeFor(result.data.user));
 }
 
 export async function forgotPasswordAction(_: FormState, data: FormData): Promise<FormState> {

@@ -3,11 +3,12 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 1 — identity, authentication, roles and permissions, i18n, app shell.**
+> **Status: Phase 2 — student records, Excel import, account linking, groups, profile
+> changes** (on top of Phase 1: identity, authentication, roles and permissions, i18n).
 > The master prompt (`docs/master-prompt.md`) is the source of truth; each phase is
 > implemented separately. Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
-> [`phase-1`](docs/checkpoints/phase-1.md) — what each delivered, what was verified, and
-> what is still open.
+> [`phase-1`](docs/checkpoints/phase-1.md), [`phase-2`](docs/checkpoints/phase-2.md) — what
+> each delivered, what was verified, and what is still open.
 
 ## Stack
 
@@ -121,6 +122,8 @@ Validated once at boot by `apps/api/src/config/env.ts`:
   missing variables — never their values.
 - Paired variables (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, Upstash URL + token)
   must be set together.
+- `UNIVERSITY_EMAIL_DOMAINS` (default `agr.asu.edu.eg`, subdomains included) decides which
+  addresses students may sign up with and student records may carry.
 - `.env` files never override variables already set in the shell, CI or Vercel.
 - The web app receives only the API URL and `BFF_SHARED_SECRET`; no database or service
   credential enters its process, and nothing secret reaches the browser.
@@ -199,8 +202,10 @@ DATABASE_URL=postgresql://… pnpm test:e2e   # API suite, then the browser suit
 refuses a `supabase.co` URL.) The API suite boots the real Nest application (and the
 Vercel handler) and covers every role × endpoint combination. The browser suite starts
 the built API and web servers on ports 4100/3100, seeds the Super Admin with the real seed
-script, and drives the sign-in, forced password change, email-code and language flows in
-Chromium; it reads emailed codes from the API's log (no SMTP in tests). The two suites run
+script, and drives in Chromium the sign-in, forced password change, email-code and
+language flows, the spreadsheet import, first sign-in of an imported student, signup (both
+matched and reviewed), profile corrections and group moves; it reads emailed codes from the
+API's log (no SMTP in tests). The two suites run
 one after the other because they share the database.
 
 ## Authentication and access
@@ -222,6 +227,31 @@ one after the other because they share the database.
   sign-ins, code requests and code failures, per account and per client IP.
 - **Audit log:** append-only (enforced by a database trigger). Passwords, codes and
   tokens are never written to it.
+
+## Students and groups
+
+- **Records come first.** Faculty create student records one by one or import them from
+  Excel (`/students/import`, template downloadable there). An import is uploaded, checked
+  row by row and **previewed**; nothing is written until the uploader confirms. Changes to
+  existing students (same seat number) and skipping invalid rows each need an explicit
+  checkbox; blank cells never erase data; if the data changed since the preview, the
+  commit is refused and the preview refreshed. The original file is kept in the private
+  `student-imports` bucket when Storage is configured.
+- **Account linking (§4.2, §4.3).** A student whose imported record has their university
+  email signs in the first time with an emailed code: the account is created and linked
+  to that record. Others sign up (four-part name, seat number, university email + code):
+  if the seat number and identity match an unlinked record, the account is linked at once;
+  otherwise it waits for review (`PENDING_VERIFICATION`) and can only see its
+  verification page until a reviewer links it to a record or creates one. One record per
+  seat number, one account per record, one account per email — all enforced by the
+  database.
+- **Groups (§5).** A student has at most one active group — a partial unique index in the
+  database, not just a check in code. Moving a student ends the old membership and starts
+  a new one (history is kept and cannot be edited). Only empty groups can be archived.
+- **Profile corrections (§4.4).** Students change their phone directly; name parts and
+  seat number change only through a request a reviewer approves (applied atomically) or
+  rejects with a reason. Students never see who decided.
+- Every change is in the audit log with before/after values.
 
 ## Languages
 

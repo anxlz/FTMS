@@ -3,13 +3,20 @@ import request from 'supertest';
 import { BackgroundTasks } from '../src/common/background-tasks.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
+  addToGroup,
   bearer,
   bootTestApp,
+  buildWorkbook,
+  createGroup,
+  createStudentRecord,
   createUser,
   login,
   type Mailbox,
+  recordOf,
   resetDatabase,
+  type SeededRecord,
   type SeededUser,
+  TEMPLATE_HEADERS,
   type TestApp,
 } from './helpers/test-app';
 
@@ -26,9 +33,14 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
   let tokens: Record<Role, string>;
   let users: Record<Role, SeededUser>;
 
+  let spreadsheet: Buffer;
+
   beforeAll(async () => {
     ({ app, mailbox } = await bootTestApp());
     prisma = app.get(PrismaService);
+    spreadsheet = await buildWorkbook(TEMPLATE_HEADERS, [
+      ['MX-1', 'محمد', 'أحمد', 'علي', 'حسن', null, null, null],
+    ]);
   });
   afterAll(async () => {
     await app.close();
@@ -48,11 +60,40 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
 
   /* ───────────────────────── endpoint × role matrix ───────────────────────── */
 
+  interface Target {
+    faculty: SeededUser;
+    student: SeededUser;
+    /** The record linked to `student`. */
+    studentRecord: string;
+    /** An unlinked student record, member of `busyGroup`. */
+    record: SeededRecord;
+    group: { id: string; name: string };
+    busyGroup: { id: string; name: string };
+  }
+
   interface Case {
     name: string;
-    send: (caller: Caller, target: { faculty: SeededUser; student: SeededUser }) => request.Test;
+    send: (caller: Caller, target: Target) => request.Test;
     expected: Record<Caller, number>;
   }
+
+  /** Staff with the default faculty permissions, but not students (Phase 2 endpoints). */
+  const STAFF_ONLY = (ok: number): Record<Caller, number> => ({
+    SUPER_ADMIN: ok,
+    TRAINING_DIRECTOR: ok,
+    FACULTY: ok,
+    STUDENT: 403,
+    ANONYMOUS: 401,
+  });
+  /** A student's own data: staff are refused by role. */
+  const STUDENT_ONLY = (ok: number): Record<Caller, number> => ({
+    SUPER_ADMIN: 403,
+    TRAINING_DIRECTOR: 403,
+    FACULTY: 403,
+    STUDENT: ok,
+    ANONYMOUS: 401,
+  });
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
   const n = { i: 0 };
   const newStaff = (role: string) => ({
@@ -230,14 +271,211 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         ANONYMOUS: 401,
       },
     },
+
+    /* ── Phase 2: student records, groups, imports, reviews ── */
+    {
+      name: 'GET /students',
+      send: (c) => http().get('/students').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /students/:id',
+      send: (c, t) => http().get(`/students/${t.record.id}`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /students',
+      send: (c) =>
+        http()
+          .post('/students')
+          .set(as(c))
+          .send({ seatNumber: `MX-${++n.i}`, name: { firstName: 'سارة', familyName: 'محمود' } }),
+      expected: STAFF_ONLY(201),
+    },
+    {
+      name: 'PATCH /students/:id',
+      send: (c, t) =>
+        http().patch(`/students/${t.record.id}`).set(as(c)).send({ phone: '01012345678' }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'DELETE /students/:id',
+      send: (c, t) =>
+        http().delete(`/students/${t.record.id}`).set(as(c)).send({ reason: 'matrix test' }),
+      expected: STAFF_ONLY(204),
+    },
+    {
+      name: 'PUT /students/:id/group',
+      send: (c, t) =>
+        http().put(`/students/${t.record.id}/group`).set(as(c)).send({ groupId: t.group.id }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /students/:id/unlink-account',
+      send: (c, t) =>
+        http()
+          .post(`/students/${t.studentRecord}/unlink-account`)
+          .set(as(c))
+          .send({ reason: 'matrix test' }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /groups',
+      send: (c) => http().get('/groups').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /groups',
+      send: (c) =>
+        http()
+          .post('/groups')
+          .set(as(c))
+          .send({ name: `Matrix group ${++n.i}` }),
+      expected: STAFF_ONLY(201),
+    },
+    {
+      name: 'GET /groups/:id',
+      send: (c, t) => http().get(`/groups/${t.busyGroup.id}`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'PATCH /groups/:id',
+      send: (c, t) =>
+        http()
+          .patch(`/groups/${t.group.id}`)
+          .set(as(c))
+          .send({ name: `Renamed ${++n.i}` }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'PUT /groups/:id/archived',
+      send: (c, t) =>
+        http().put(`/groups/${t.group.id}/archived`).set(as(c)).send({ archived: true }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /groups/:id/members',
+      send: (c, t) =>
+        http()
+          .post(`/groups/${t.group.id}/members`)
+          .set(as(c))
+          .send({ studentIds: [t.record.id], moveFromOtherGroup: true }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'DELETE /groups/:id/members/:studentId',
+      send: (c, t) =>
+        http().delete(`/groups/${t.busyGroup.id}/members/${t.record.id}`).set(as(c)).send({}),
+      expected: STAFF_ONLY(204),
+    },
+    {
+      name: 'GET /student-imports',
+      send: (c) => http().get('/student-imports').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /student-imports/template',
+      send: (c) => http().get('/student-imports/template').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /student-imports (upload)',
+      send: (c) =>
+        http()
+          .post('/student-imports')
+          .set(as(c))
+          .attach('file', spreadsheet, { filename: 'students.xlsx', contentType: XLSX }),
+      expected: STAFF_ONLY(201),
+    },
+    {
+      name: 'GET /profile-changes',
+      send: (c) => http().get('/profile-changes').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /student-verifications',
+      send: (c) => http().get('/student-verifications').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /me/student',
+      send: (c) => http().get('/me/student').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'PATCH /me/student',
+      send: (c) => http().patch('/me/student').set(as(c)).send({ phone: '01012345678' }),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'GET /me/profile-changes',
+      send: (c) => http().get('/me/profile-changes').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'POST /me/profile-changes',
+      send: (c) =>
+        http()
+          .post('/me/profile-changes')
+          .set(as(c))
+          .send({ seatNumber: `CHG-${++n.i}`, note: 'matrix test' }),
+      expected: STUDENT_ONLY(201),
+    },
+    {
+      name: 'GET /me/verification',
+      send: (c) => http().get('/me/verification').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'POST /me/verification (already verified)',
+      send: (c) =>
+        http().post('/me/verification').set(as(c)).send({
+          seatNumber: 'V-1',
+          firstName: 'محمد',
+          fatherName: 'أحمد',
+          grandfatherName: 'علي',
+          familyName: 'حسن',
+        }),
+      expected: STUDENT_ONLY(409),
+    },
+    {
+      name: 'POST /auth/signup/request (public)',
+      send: (c) =>
+        http()
+          .post('/auth/signup/request')
+          .set(as(c))
+          .send({
+            email: `signup${++n.i}@agr.asu.edu.eg`,
+            seatNumber: `SU-${n.i}`,
+            firstName: 'محمد',
+            fatherName: 'أحمد',
+            grandfatherName: 'علي',
+            familyName: 'حسن',
+          }),
+      expected: {
+        SUPER_ADMIN: 202,
+        TRAINING_DIRECTOR: 202,
+        FACULTY: 202,
+        STUDENT: 202,
+        ANONYMOUS: 202,
+      },
+    },
   ];
 
   it.each(cases.flatMap((c) => CALLERS.map((caller) => [c.name, caller, c] as const)))(
     '%s as %s',
     async (_name, caller, testCase) => {
-      const target = {
+      const student = await createUser(app, 'STUDENT');
+      const record = await createStudentRecord(app);
+      const busyGroup = await createGroup(app);
+      await addToGroup(app, record.id, busyGroup.id);
+      const target: Target = {
         faculty: await createUser(app, 'FACULTY'),
-        student: await createUser(app, 'STUDENT'),
+        student,
+        studentRecord: await recordOf(app, student.id),
+        record,
+        group: await createGroup(app),
+        busyGroup,
       };
       const res = await testCase.send(caller, target);
       expect({ status: res.status, code: res.body?.code }).toMatchObject({

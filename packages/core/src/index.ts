@@ -7,3 +7,6 @@ export * from './constants';
 export * from './errors';
 export * from './health';
 export * from './i18n';
+export * from './students/contracts';
+export * from './students/names';
+export * from './text';

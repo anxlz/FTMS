@@ -128,6 +128,17 @@ describe('parseEnv', () => {
     ).toEqual([expect.stringMatching(/^UPSTASH_REDIS_REST_URL /)]);
   });
 
+  it('parses the university email domains (default agr.asu.edu.eg)', () => {
+    expect(parseEnv(BASE).UNIVERSITY_EMAIL_DOMAINS).toEqual(['agr.asu.edu.eg']);
+    expect(
+      parseEnv({ ...BASE, UNIVERSITY_EMAIL_DOMAINS: ' AGR.asu.edu.eg, std.asu.edu.eg ,' })
+        .UNIVERSITY_EMAIL_DOMAINS,
+    ).toEqual(['agr.asu.edu.eg', 'std.asu.edu.eg']);
+    expect(problemsOf({ ...BASE, UNIVERSITY_EMAIL_DOMAINS: '@gmail' }).join(' ')).toContain(
+      'UNIVERSITY_EMAIL_DOMAINS',
+    );
+  });
+
   it('never echoes secret values in error messages', () => {
     const secret = 'sk_live_SUPER_SECRET_VALUE';
     let message = '';

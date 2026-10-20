@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AuthCard } from '@/components/auth-card';
-import { currentUser } from '@/lib/auth/session';
+import { currentUser, homeFor } from '@/lib/auth/session';
 import { logoutAction } from '@/lib/auth/actions';
 import { PasswordForm } from '@/components/password-form';
 
@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function SetPasswordPage() {
   const user = await currentUser();
   if (!user) redirect('/login');
-  if (!user.passwordSetupRequired) redirect('/dashboard');
+  if (!user.passwordSetupRequired) redirect(homeFor(user));
   const t = await getTranslations('auth.setPassword');
   const tc = await getTranslations('common');
   const first = !user.hasPassword;

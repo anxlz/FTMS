@@ -49,6 +49,22 @@ export function redactSecrets(value: unknown, depth = 0): unknown {
 const json = (value: Record<string, unknown> | null | undefined) =>
   value ? (redactSecrets(value) as Prisma.InputJsonValue) : Prisma.DbNull;
 
+const toRow = (event: AuditEvent): Prisma.AuditLogCreateManyInput => ({
+  actorId: event.actor?.id ?? null,
+  actorName: event.actor?.displayName ?? null,
+  actorRole: event.actor?.role ?? null,
+  action: event.action,
+  resourceType: event.resourceType,
+  resourceId: event.resourceId ?? null,
+  outcome: event.outcome,
+  reason: event.reason ?? null,
+  before: json(event.before),
+  after: json(event.after),
+  metadata: json(event.metadata),
+  ip: event.context?.ip ?? null,
+  userAgent: event.context?.userAgent ?? null,
+});
+
 /**
  * The single audit writer for the whole application (§15.4). Rows are
  * append-only at the database level. Callers pass `tx` to make the audit row
@@ -62,23 +78,14 @@ export class AuditService {
 
   async record(event: AuditEvent, tx?: Prisma.TransactionClient): Promise<void> {
     const client = tx ?? this.prisma;
-    await client.auditLog.create({
-      data: {
-        actorId: event.actor?.id ?? null,
-        actorName: event.actor?.displayName ?? null,
-        actorRole: event.actor?.role ?? null,
-        action: event.action,
-        resourceType: event.resourceType,
-        resourceId: event.resourceId ?? null,
-        outcome: event.outcome,
-        reason: event.reason ?? null,
-        before: json(event.before),
-        after: json(event.after),
-        metadata: json(event.metadata),
-        ip: event.context?.ip ?? null,
-        userAgent: event.context?.userAgent ?? null,
-      },
-    });
+    await client.auditLog.create({ data: toRow(event) });
+  }
+
+  /** Many events in one statement (bulk operations such as spreadsheet imports). */
+  async recordMany(events: AuditEvent[], tx?: Prisma.TransactionClient): Promise<void> {
+    if (events.length === 0) return;
+    const client = tx ?? this.prisma;
+    await client.auditLog.createMany({ data: events.map(toRow) });
   }
 
   /**

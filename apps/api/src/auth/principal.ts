@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type Locale, type PermissionKey, type Role } from '@ftms/core';
+import { type AccountStatus, type Locale, type PermissionKey, type Role } from '@ftms/core';
 import { type AuthMethod } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { type AuditActor } from '../audit/audit.service';
@@ -17,6 +17,8 @@ export interface AuthPrincipal {
   sessionMethod: AuthMethod;
   email: string;
   role: Role;
+  /** ACTIVE, or PENDING_VERIFICATION for a student awaiting review (§4.2 Case B). */
+  status: Extract<AccountStatus, 'ACTIVE' | 'PENDING_VERIFICATION'>;
   displayName: string;
   preferredLocale: Locale;
   passwordSetupRequired: boolean;
@@ -36,6 +38,13 @@ export const actorOfUser = (
   displayName: u.displayName,
   role: u.role,
 });
+
+/**
+ * Accounts that may hold a session: active ones, and students waiting for
+ * verification (who are confined to their verification page by a guard).
+ */
+export const isUsableStatus = (status: AccountStatus): boolean =>
+  status === 'ACTIVE' || status === 'PENDING_VERIFICATION';
 
 /** `lastUsedAt` is refreshed at most this often, to avoid a write per request. */
 const TOUCH_INTERVAL_MS = 5 * 60_000;
@@ -57,7 +66,7 @@ export class PrincipalService {
     if (!session || session.userId !== userId) return null;
     if (session.revokedAt !== null || session.expiresAt <= now) return null;
     const user = session.user;
-    if (user.status !== 'ACTIVE') return null;
+    if (!isUsableStatus(user.status)) return null;
 
     if (now.getTime() - session.lastUsedAt.getTime() > TOUCH_INTERVAL_MS) {
       await this.prisma.authSession.update({
@@ -72,6 +81,7 @@ export class PrincipalService {
       sessionMethod: session.method,
       email: user.email,
       role: user.role,
+      status: user.status as AuthPrincipal['status'],
       displayName: user.displayName,
       preferredLocale: user.preferredLocale,
       passwordSetupRequired: passwordSetupRequired(user),
