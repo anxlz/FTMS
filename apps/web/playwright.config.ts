@@ -38,10 +38,12 @@ export default defineConfig({
       ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } }
       : {}),
   },
-  // The attendance spec builds on the program the scheduling spec configures.
+  // The attendance spec builds on the program the scheduling spec configures;
+  // the requests spec runs after the core specs so its groups do not appear in theirs.
   projects: [
-    { name: 'core', testIgnore: /attendance\.spec\.ts$/ },
+    { name: 'core', testIgnore: /(attendance|requests)\.spec\.ts$/ },
     { name: 'attendance', testMatch: /attendance\.spec\.ts$/, dependencies: ['core'] },
+    { name: 'requests', testMatch: /requests\.spec\.ts$/, dependencies: ['core'] },
   ],
   webServer: [
     {

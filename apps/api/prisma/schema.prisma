@@ -99,6 +99,13 @@ model User {
   webauthnChallenges  WebAuthnChallenge[]
   attendanceCorrected AttendanceRecord[]   @relation("AttendanceCorrectedBy")
 
+  ticketsCreated      SupportTicket[]      @relation("TicketCreatedBy")
+  ticketMessages      TicketMessage[]      @relation("TicketMessageAuthor")
+  ticketStatusChanges TicketStatusChange[] @relation("TicketStatusChangedBy")
+  ticketAttachments   TicketAttachment[]   @relation("TicketAttachmentUploadedBy")
+  groupSwapsDecided   GroupSwapRequest[]   @relation("GroupSwapFacultyDecidedBy")
+  groupSwapDecisions  GroupSwapDecision[]  @relation("GroupSwapDecisionActor")
+
   @@index([role, status])
   @@map("users")
 }
@@ -134,6 +141,9 @@ model StudentProfile {
   profileChanges      ProfileChangeRequest[]
   verificationsLinked StudentVerificationRequest[]
   attendance          AttendanceRecord[]
+  tickets             SupportTicket[]
+  swapsRequested      GroupSwapRequest[]           @relation("GroupSwapRequester")
+  swapsReceived       GroupSwapRequest[]           @relation("GroupSwapCounterpart")
 
   @@index([fullName])
   @@index([nameKey])
@@ -305,6 +315,8 @@ model TrainingGroup {
   scheduleGroups ScheduleGroup[]
   visitGroups    VisitGroup[]
   attendance     AttendanceRecord[]
+  swapsFrom      GroupSwapRequest[] @relation("GroupSwapRequesterGroup")
+  swapsTo        GroupSwapRequest[] @relation("GroupSwapCounterpartGroup")
 
   @@map("training_groups")
 }
@@ -313,6 +325,8 @@ enum MembershipSource {
   MANUAL
   IMPORT
   VERIFICATION
+  /// An approved group-swap request (§14.5).
+  SWAP
 }
 
 /// A student's membership in a group over time. At most ONE active membership
@@ -784,4 +798,196 @@ model AttendanceRecord {
   @@index([studentId])
   @@index([groupId, status])
   @@map("attendance_records")
+}
+
+/**
+ * ═══════════════════════════ Phase 5 ═══════════════════════════
+ * Support tickets (§13) and mutual group-swap requests (§14).
+ */
+
+enum TicketCategory {
+  COMPLAINT
+  SUGGESTION
+  GROUP_SWAP
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+/// A student's ticket. Messages, status changes and attachments are history:
+/// append-only (trigger). Never deleted.
+model SupportTicket {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  /// Short reference shown to people ("#42").
+  number         Int            @unique @default(autoincrement())
+  studentId      String         @map("student_id") @db.Uuid
+  createdById    String         @map("created_by_id") @db.Uuid
+  category       TicketCategory
+  subject        String         @db.VarChar(200)
+  description    String
+  status         TicketStatus   @default(OPEN)
+  /// Outcome note of the latest resolve/close, shown to the student.
+  resolution     String?        @db.VarChar(1000)
+  lastActivityAt DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+  closedAt       DateTime?      @map("closed_at") @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  student       StudentProfile       @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  createdBy     User                 @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  messages      TicketMessage[]
+  statusChanges TicketStatusChange[]
+  attachments   TicketAttachment[]
+  groupSwap     GroupSwapRequest?
+
+  @@index([studentId, createdAt])
+  @@index([status, lastActivityAt])
+  @@index([category, status])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  ticketId   String   @map("ticket_id") @db.Uuid
+  authorId   String   @map("author_id") @db.Uuid
+  /// Role at the time of writing (staff vs. student view, §13.3).
+  authorRole Role     @map("author_role")
+  body       String
+  /// Staff-only note; never shown to the student.
+  internal   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ticket      SupportTicket      @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  author      User               @relation("TicketMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  attachments TicketAttachment[]
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
+model TicketStatusChange {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  ticketId      String        @map("ticket_id") @db.Uuid
+  fromStatus    TicketStatus? @map("from_status")
+  toStatus      TicketStatus  @map("to_status")
+  /// Null when the system changed it (e.g. a group-swap outcome).
+  changedById   String?       @map("changed_by_id") @db.Uuid
+  changedByRole Role?         @map("changed_by_role")
+  note          String?       @db.VarChar(1000)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  changedBy User?         @relation("TicketStatusChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_status_changes")
+}
+
+/// A file in the private `ticket-attachments` bucket (§16.3), sent with the
+/// ticket (no message) or with a message.
+model TicketAttachment {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  ticketId     String   @map("ticket_id") @db.Uuid
+  messageId    String?  @map("message_id") @db.Uuid
+  uploadedById String   @map("uploaded_by_id") @db.Uuid
+  bucket       String   @db.VarChar(64)
+  storagePath  String   @unique @map("storage_path") @db.VarChar(500)
+  fileName     String   @map("file_name") @db.VarChar(255)
+  contentType  String   @map("content_type") @db.VarChar(100)
+  sizeBytes    Int      @map("size_bytes")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ticket     SupportTicket  @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  message    TicketMessage? @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  uploadedBy User           @relation("TicketAttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([ticketId])
+  @@map("ticket_attachments")
+}
+
+enum GroupSwapStatus {
+  PENDING_COUNTERPART
+  COUNTERPART_REJECTED
+  PENDING_FACULTY
+  FACULTY_REJECTED
+  APPROVED
+  WITHDRAWN
+  CANCELLED
+}
+
+/// A mutual exchange of groups between two students (§14). The students and
+/// their groups at the time of the request never change; the status follows
+/// the state machine in @ftms/core (trigger). A student takes part in at most
+/// one open request; an approval exchanges both groups in the same transaction.
+model GroupSwapRequest {
+  id                   String          @id @default(uuid(7)) @db.Uuid
+  ticketId             String          @unique @map("ticket_id") @db.Uuid
+  requesterId          String          @map("requester_id") @db.Uuid
+  requesterGroupId     String          @map("requester_group_id") @db.Uuid
+  counterpartId        String          @map("counterpart_id") @db.Uuid
+  /// The counterpart's group: the requester's target group.
+  counterpartGroupId   String          @map("counterpart_group_id") @db.Uuid
+  status               GroupSwapStatus @default(PENDING_COUNTERPART)
+  note                 String?         @db.VarChar(1000)
+  counterpartDecidedAt DateTime?       @map("counterpart_decided_at") @db.Timestamptz(3)
+  counterpartReason    String?         @map("counterpart_reason") @db.VarChar(500)
+  facultyDecidedAt     DateTime?       @map("faculty_decided_at") @db.Timestamptz(3)
+  facultyDecidedById   String?         @map("faculty_decided_by_id") @db.Uuid
+  facultyReason        String?         @map("faculty_reason") @db.VarChar(500)
+  cancelReason         String?         @map("cancel_reason") @db.VarChar(32)
+  closedAt             DateTime?       @map("closed_at") @db.Timestamptz(3)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  ticket           SupportTicket       @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  requester        StudentProfile      @relation("GroupSwapRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  counterpart      StudentProfile      @relation("GroupSwapCounterpart", fields: [counterpartId], references: [id], onDelete: Restrict)
+  requesterGroup   TrainingGroup       @relation("GroupSwapRequesterGroup", fields: [requesterGroupId], references: [id], onDelete: Restrict)
+  counterpartGroup TrainingGroup       @relation("GroupSwapCounterpartGroup", fields: [counterpartGroupId], references: [id], onDelete: Restrict)
+  facultyDecidedBy User?               @relation("GroupSwapFacultyDecidedBy", fields: [facultyDecidedById], references: [id], onDelete: Restrict)
+  decisions        GroupSwapDecision[]
+
+  @@index([status, createdAt])
+  @@index([requesterId])
+  @@index([counterpartId])
+  @@map("group_swap_requests")
+}
+
+enum GroupSwapDecisionKind {
+  COUNTERPART
+  FACULTY
+  REQUESTER
+  SYSTEM
+}
+
+enum GroupSwapDecisionValue {
+  ACCEPTED
+  REJECTED
+  APPROVED
+  WITHDRAWN
+  CANCELLED
+}
+
+/// Every decision on a request, with who made it (§14.7). Append-only.
+model GroupSwapDecision {
+  id        String                 @id @default(uuid(7)) @db.Uuid
+  requestId String                 @map("request_id") @db.Uuid
+  kind      GroupSwapDecisionKind
+  decision  GroupSwapDecisionValue
+  actorId   String?                @map("actor_id") @db.Uuid
+  /// Name and role at the time of the decision.
+  actorName String?                @map("actor_name") @db.VarChar(200)
+  actorRole Role?                  @map("actor_role")
+  reason    String?                @db.VarChar(500)
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  request GroupSwapRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actor   User?            @relation("GroupSwapDecisionActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, createdAt])
+  @@map("group_swap_decisions")
 }

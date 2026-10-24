@@ -5,8 +5,11 @@ import {
   type AttendanceOverview,
   type CalendarResponse,
   type Group,
+  type GroupSwapView,
+  type ListGroupSwapsResponse,
   type ListProfileChangesResponse,
   type ListStudentsResponse,
+  type ListTicketsResponse,
   type ListUsersResponse,
   type ListVerificationsResponse,
   type MeResponse,
@@ -15,6 +18,7 @@ import {
   PROGRAM_TIME_ZONE,
   ROLES,
   todayIn,
+  type UnreadCount,
 } from '@ftms/core';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { timeRange } from '@/components/month-calendar';
@@ -36,7 +40,7 @@ export default async function DashboardPage() {
   const format = await getFormatter();
   const today = todayIn(PROGRAM_TIME_ZONE);
   // Real data only: every figure comes from the API.
-  const [counts, records, own, upcoming, attendance, overview] = await Promise.all([
+  const [counts, records, own, upcoming, attendance, overview, requests] = await Promise.all([
     has('users.read') ? accountCounts(token) : null,
     has('students.read')
       ? studentCounts(token, has('profile_changes.decide'), has('students.manage'))
@@ -54,6 +58,11 @@ export default async function DashboardPage() {
     has('attendance.read')
       ? apiFetch<AttendanceOverview>('/attendance/overview', { accessToken: token })
       : null,
+    requestCounts(token, {
+      student: user.role === 'STUDENT',
+      tickets: has('tickets.process'),
+      swaps: has('group_swaps.decide'),
+    }),
   ]);
   const summary = attendance?.ok ? attendance.data.summary : null;
   const totals = overview?.ok ? overview.data : null;
@@ -164,6 +173,47 @@ export default async function DashboardPage() {
           </ul>
         </section>
       )}
+
+      <section className="card" aria-labelledby="requests-title">
+        <div className="row-between">
+          <h2 id="requests-title">{t('dashboard.requestsTitle')}</h2>
+          {(user.role === 'STUDENT' || has('tickets.process')) && (
+            <Link href="/tickets">{t('dashboard.openTickets')}</Link>
+          )}
+        </div>
+        <ul className="stat-grid">
+          {requests.activeTickets !== null && (
+            <li className="stat">
+              <span className="stat-value">{requests.activeTickets ?? '—'}</span>
+              <span className="stat-label">
+                <Link href="/tickets?status=ACTIVE">{t('dashboard.activeTickets')}</Link>
+              </span>
+            </li>
+          )}
+          {requests.swapsForMe !== null && (
+            <li className="stat">
+              <span className="stat-value">{requests.swapsForMe ?? '—'}</span>
+              <span className="stat-label">
+                <Link href="/tickets">{t('dashboard.swapsForMe')}</Link>
+              </span>
+            </li>
+          )}
+          {requests.swapsForFaculty !== null && (
+            <li className="stat">
+              <span className="stat-value">{requests.swapsForFaculty ?? '—'}</span>
+              <span className="stat-label">
+                <Link href="/group-swaps">{t('dashboard.swapsForFaculty')}</Link>
+              </span>
+            </li>
+          )}
+          <li className="stat">
+            <span className="stat-value">{requests.unread ?? '—'}</span>
+            <span className="stat-label">
+              <Link href="/notifications">{t('dashboard.unreadNotifications')}</Link>
+            </span>
+          </li>
+        </ul>
+      </section>
 
       {upcoming.ok && (
         <section className="card stack" aria-labelledby="upcoming-title">
@@ -301,4 +351,38 @@ async function studentCounts(token: string | null, canChanges: boolean, canVerif
         : null,
     ]);
   return { total: all, unlinked, ungrouped, groups, pendingChanges, pendingVerifications };
+}
+
+/**
+ * Tickets and requests that need someone (§13, §14), from the API; `null`
+ * where the account has no such queue, `undefined` if it could not be read.
+ */
+async function requestCounts(
+  token: string | null,
+  can: { student: boolean; tickets: boolean; swaps: boolean },
+) {
+  const total = <T extends { total: number }>(path: string) =>
+    apiFetch<T>(path, { accessToken: token }).then((r) => (r.ok ? r.data.total : undefined));
+  const [activeTickets, swapsForMe, swapsForFaculty, unread] = await Promise.all([
+    can.student
+      ? total<ListTicketsResponse>('/me/tickets?status=ACTIVE&pageSize=1')
+      : can.tickets
+        ? total<ListTicketsResponse>('/tickets?status=ACTIVE&pageSize=1')
+        : null,
+    can.student
+      ? apiFetch<GroupSwapView[]>('/me/group-swaps', { accessToken: token }).then((r) =>
+          r.ok
+            ? r.data.filter((s) => s.role === 'COUNTERPART' && s.status === 'PENDING_COUNTERPART')
+                .length
+            : undefined,
+        )
+      : null,
+    can.swaps
+      ? total<ListGroupSwapsResponse>('/group-swaps?status=PENDING_FACULTY&pageSize=1')
+      : null,
+    apiFetch<UnreadCount>('/notifications/unread-count', { accessToken: token }).then((r) =>
+      r.ok ? r.data.unread : undefined,
+    ),
+  ]);
+  return { activeTickets, swapsForMe, swapsForFaculty, unread };
 }

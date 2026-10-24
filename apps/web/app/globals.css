@@ -1033,3 +1033,124 @@ details > summary {
     break-inside: avoid;
   }
 }
+
+/* ── Phase 5: tickets and group-swap requests ──────────────────────────── */
+h3,
+.h3 {
+  color: var(--brand-navy);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+}
+.status-tk-open,
+.status-sw-pending_counterpart {
+  color: var(--warn);
+}
+.status-tk-open::before,
+.status-sw-pending_counterpart::before {
+  content: '○';
+}
+.status-tk-in_progress,
+.status-sw-pending_faculty {
+  color: var(--brand-blue);
+}
+.status-tk-in_progress::before,
+.status-sw-pending_faculty::before {
+  content: '◐';
+}
+.status-tk-resolved,
+.status-sw-approved {
+  color: var(--ok);
+}
+.status-tk-resolved::before,
+.status-sw-approved::before {
+  content: '●';
+}
+.status-sw-counterpart_rejected,
+.status-sw-faculty_rejected {
+  color: var(--error);
+}
+.status-sw-counterpart_rejected::before,
+.status-sw-faculty_rejected::before {
+  content: '■';
+}
+.status-tk-closed,
+.status-sw-withdrawn,
+.status-sw-cancelled {
+  color: var(--muted);
+}
+.status-tk-closed::before,
+.status-sw-withdrawn::before,
+.status-sw-cancelled::before {
+  content: '–';
+}
+.choice-list {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.choice-list legend {
+  font-weight: 600;
+  margin-block-end: 0.4rem;
+}
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.8rem;
+}
+.choice:has(input:checked) {
+  border-color: var(--brand-blue);
+  background: var(--info-bg);
+}
+.choice input {
+  margin-block-start: 0.3rem;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+}
+.choice label {
+  display: grid;
+  gap: 0.15rem;
+  cursor: pointer;
+}
+.thread,
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.message {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.85rem;
+}
+.message p {
+  margin: 0 0 0.35rem;
+}
+.message-staff {
+  background: var(--info-bg);
+  margin-inline-start: clamp(0rem, 6vw, 3rem);
+}
+.message-student {
+  margin-inline-end: clamp(0rem, 6vw, 3rem);
+}
+.message-internal {
+  background: var(--warn-bg);
+  border-style: dashed;
+}
+.filter-date {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 11rem;
+}
+.filter-date input {
+  flex: 1 1 auto;
+}

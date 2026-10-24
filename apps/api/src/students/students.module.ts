@@ -29,5 +29,6 @@ import { VerificationsService } from './verifications.service';
     ProfileChangesService,
     VerificationsService,
   ],
+  exports: [GroupsService],
 })
 export class StudentsModule {}

@@ -15,7 +15,9 @@ import { Errors } from '../common/api-exception';
 import { dbViolation, isUniqueViolation } from '../common/db-errors';
 import { type RequestContext } from '../common/request-context';
 import { type MembershipSource, type Prisma } from '../generated/prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { cancelOpenSwapsOf } from '../requests/swap-steps';
 import { StudentErrors } from './student-errors';
 
 const ACTIVE_COUNT = {
@@ -52,6 +54,7 @@ export class GroupsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(includeArchived: boolean): Promise<Group[]> {
@@ -255,6 +258,14 @@ export class GroupsService {
       });
     }
     const result: MoveResult = { before: ref(beforeGroup), after: ref(afterGroup), changed: true };
+    // A swap request made for the old group can no longer be carried out (§14.2).
+    if (params.source !== 'SWAP') {
+      await cancelOpenSwapsOf(
+        tx,
+        { audit: this.audit, notifications: this.notifications },
+        { studentId: params.studentId, actor: params.actor, context: params.context },
+      );
+    }
     await this.audit.record(
       {
         actor: params.actor,

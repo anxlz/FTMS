@@ -83,6 +83,12 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
     pastVisit: string;
     checkInToken: string;
     callingStudentRecord: string;
+    /** Phase 5: the calling student's ticket; a request waiting for the calling student; one waiting for the faculty. */
+    ticket: string;
+    swapForStudent: string;
+    swapForFaculty: string;
+    otherGroup: string;
+    otherStudentSeat: string;
   }
 
   interface Case {
@@ -757,6 +763,114 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         ANONYMOUS: 200,
       },
     },
+    /* ── Phase 5: tickets and group swaps ── */
+    {
+      name: 'POST /tickets',
+      send: (c) =>
+        http()
+          .post('/tickets')
+          .set(as(c))
+          .field('category', 'SUGGESTION')
+          .field('subject', 'Matrix subject')
+          .field('description', 'Matrix description'),
+      expected: STUDENT_ONLY(201),
+    },
+    {
+      name: 'GET /me/tickets',
+      send: (c) => http().get('/me/tickets').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'GET /tickets',
+      send: (c) => http().get('/tickets').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /tickets/:id (student: own)',
+      send: (c, t) => http().get(`/tickets/${t.ticket}`).set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /tickets/:id/messages (student: own)',
+      send: (c, t) =>
+        http().post(`/tickets/${t.ticket}/messages`).set(as(c)).field('body', 'Matrix'),
+      expected: SIGNED_IN(201),
+    },
+    {
+      name: 'POST /tickets/:id/status',
+      send: (c, t) =>
+        http().post(`/tickets/${t.ticket}/status`).set(as(c)).send({ status: 'IN_PROGRESS' }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /group-swaps (counterpart without an account)',
+      send: (c, t) =>
+        http()
+          .post('/group-swaps')
+          .set(as(c))
+          .send({ targetGroupId: t.otherGroup, counterpartSeatNumber: t.otherStudentSeat }),
+      expected: STUDENT_ONLY(400),
+    },
+    {
+      name: 'GET /me/group-swaps',
+      send: (c) => http().get('/me/group-swaps').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'GET /me/group-swaps/groups',
+      send: (c) => http().get('/me/group-swaps/groups').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'GET /group-swaps',
+      send: (c) => http().get('/group-swaps').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /group-swaps/history',
+      send: (c) => http().get('/group-swaps/history').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /group-swaps/:id (student: counterpart)',
+      send: (c, t) => http().get(`/group-swaps/${t.swapForStudent}`).set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /group-swaps/:id/accept',
+      send: (c, t) => http().post(`/group-swaps/${t.swapForStudent}/accept`).set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'POST /group-swaps/:id/decline',
+      send: (c, t) => http().post(`/group-swaps/${t.swapForStudent}/decline`).set(as(c)).send({}),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'POST /group-swaps/:id/withdraw (not the requester)',
+      send: (c, t) => http().post(`/group-swaps/${t.swapForStudent}/withdraw`).set(as(c)).send({}),
+      expected: {
+        SUPER_ADMIN: 403,
+        TRAINING_DIRECTOR: 403,
+        FACULTY: 403,
+        STUDENT: 403,
+        ANONYMOUS: 401,
+      },
+    },
+    {
+      name: 'POST /group-swaps/:id/approve',
+      send: (c, t) => http().post(`/group-swaps/${t.swapForFaculty}/approve`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'POST /group-swaps/:id/reject',
+      send: (c, t) =>
+        http()
+          .post(`/group-swaps/${t.swapForFaculty}/reject`)
+          .set(as(c))
+          .send({ reason: 'Matrix rejection' }),
+      expected: STAFF_ONLY(200),
+    },
     {
       name: 'GET /local-files/:token (public; forged token)',
       send: (c) => http().get('/local-files/e30.0000').set(as(c)),
@@ -821,6 +935,67 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         date: cairoDate(-1),
       });
 
+      // Phase 5 fixtures.
+      const callingStudentRecord = await recordOf(app, users.STUDENT.id);
+      const ticket = await prisma.supportTicket.create({
+        data: {
+          studentId: callingStudentRecord,
+          createdById: users.STUDENT.id,
+          category: 'COMPLAINT',
+          subject: 'Matrix ticket',
+          description: 'Matrix description',
+        },
+      });
+      const swapBetween = async (
+        requesterId: string,
+        requesterGroupId: string,
+        counterpartId: string,
+        counterpartGroupId: string,
+        waitingForFaculty: boolean,
+      ) =>
+        prisma.$transaction(async (tx) => {
+          const t = await tx.supportTicket.create({
+            data: {
+              studentId: requesterId,
+              createdById: student.id,
+              category: 'GROUP_SWAP',
+              subject: 'Matrix swap',
+              description: 'Matrix swap',
+            },
+          });
+          const r = await tx.groupSwapRequest.create({
+            data: {
+              ticketId: t.id,
+              requesterId,
+              requesterGroupId,
+              counterpartId,
+              counterpartGroupId,
+            },
+          });
+          if (waitingForFaculty) {
+            await tx.groupSwapRequest.update({
+              where: { id: r.id },
+              data: { status: 'PENDING_FACULTY', counterpartDecidedAt: new Date() },
+            });
+          }
+          return r.id;
+        });
+      const otherGroup = await createGroup(app);
+      const asker = await createStudentRecord(app);
+      await addToGroup(app, asker.id, otherGroup.id);
+      const swapForStudent = await swapBetween(
+        asker.id,
+        otherGroup.id,
+        callingStudentRecord,
+        studentGroup.id,
+        false,
+      );
+      const [g1, g2] = [await createGroup(app), await createGroup(app)];
+      const [y, z] = [await createStudentRecord(app), await createStudentRecord(app)];
+      await addToGroup(app, y.id, g1.id);
+      await addToGroup(app, z.id, g2.id);
+      const swapForFaculty = await swapBetween(y.id, g1.id, z.id, g2.id, true);
+
       const target: Target = {
         faculty: await createUser(app, 'FACULTY'),
         student,
@@ -835,7 +1010,12 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         exception: exception.id,
         pastVisit: pastVisit.id,
         checkInToken: app.get(AttendanceTokens).sign(visit.id),
-        callingStudentRecord: await recordOf(app, users.STUDENT.id),
+        callingStudentRecord,
+        ticket: ticket.id,
+        swapForStudent,
+        swapForFaculty,
+        otherGroup: otherGroup.id,
+        otherStudentSeat: asker.seatNumber,
       };
       const res = await testCase.send(caller, target);
       expect({ status: res.status, code: res.body?.code }).toMatchObject({

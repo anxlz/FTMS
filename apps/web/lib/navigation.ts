@@ -24,7 +24,7 @@ const STUDENT_NAV: NavItem[] = [
   { key: 'trainingCalendar', href: '/calendar' },
   { key: 'attendanceHistory', href: '/attendance' },
   { key: 'notifications', href: '/notifications' },
-  { key: 'tickets', phase: 5 },
+  { key: 'tickets', href: '/tickets' },
   { key: 'profile', href: '/profile' },
 ];
 
@@ -35,8 +35,8 @@ const STAFF_NAV: StaffEntry[] = [
   { key: 'calendar', href: '/calendar' },
   { key: 'groups', href: '/groups', anyOf: ['students.read', 'groups.manage'] },
   { key: 'attendance', href: '/attendance', anyOf: ['attendance.read'] },
-  { key: 'tickets', phase: 5, anyOf: ['tickets.process'] },
-  { key: 'groupSwaps', phase: 5, anyOf: ['group_swaps.decide'] },
+  { key: 'tickets', href: '/tickets', anyOf: ['tickets.process'] },
+  { key: 'groupSwaps', href: '/group-swaps', anyOf: ['group_swaps.decide', 'group_swaps.audit'] },
   {
     key: 'schedule',
     href: '/schedule',

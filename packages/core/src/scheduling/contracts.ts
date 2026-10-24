@@ -501,6 +501,16 @@ export const NOTIFICATION_TYPES = [
   'attendance.corrected',
   'security.biometric_enabled',
   'security.biometric_revoked',
+  'ticket.replied',
+  'ticket.status_changed',
+  'group_swap.requested',
+  'group_swap.accepted',
+  'group_swap.under_review',
+  'group_swap.counterpart_rejected',
+  'group_swap.approved',
+  'group_swap.rejected',
+  'group_swap.withdrawn',
+  'group_swap.cancelled',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

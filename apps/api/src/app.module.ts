@@ -10,6 +10,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RedisModule } from './redis/redis.module';
+import { RequestsModule } from './requests/requests.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { StorageModule } from './storage/storage.module';
 import { StudentsModule } from './students/students.module';
@@ -31,6 +32,7 @@ import { UsersModule } from './users/users.module';
     StudentsModule,
     SchedulingModule,
     AttendanceModule,
+    RequestsModule,
     HealthModule,
   ],
 })

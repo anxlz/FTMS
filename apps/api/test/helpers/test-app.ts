@@ -87,6 +87,12 @@ export async function bootTestApp(
 }
 
 const TRUNCATE = [
+  'group_swap_decisions',
+  'group_swap_requests',
+  'ticket_attachments',
+  'ticket_status_changes',
+  'ticket_messages',
+  'support_tickets',
   'attendance_records',
   'webauthn_challenges',
   'webauthn_credentials',

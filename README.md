@@ -3,16 +3,18 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 4 — QR codes, check-in with biometrics and location, automatic
-> lateness and absences, faculty corrections, attendance dashboards and PDF/XLSX/CSV
-> exports** (on top of Phase 3: program settings, schedules, visits, calendars,
-> notifications; Phase 2: student records, import, account linking, groups; Phase 1:
-> identity, authentication, roles and permissions, i18n). The master prompt
-> (`docs/master-prompt.md`) is the source of truth; each phase is implemented separately.
-> Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
-> [`phase-1`](docs/checkpoints/phase-1.md), [`phase-2`](docs/checkpoints/phase-2.md),
-> [`phase-3`](docs/checkpoints/phase-3.md), [`phase-4`](docs/checkpoints/phase-4.md) — what
-> each delivered, what was verified, and what is still open.
+> **Status: Phase 5 — support tickets (complaints, suggestions, conversation, status
+> history) and mutual group swaps with the other student's consent, faculty approval, an
+> atomic exchange and a Training Director audit history** (on top of Phase 4: QR check-in
+> with biometrics and location, lateness, absences, corrections, attendance dashboards and
+> exports; Phase 3: program settings, schedules, visits, calendars, notifications; Phase 2:
+> student records, import, account linking, groups; Phase 1: identity, authentication,
+> roles and permissions, i18n). The master prompt (`docs/master-prompt.md`) is the source
+> of truth; each phase is implemented separately. Checkpoints:
+> [`phase-0`](docs/checkpoints/phase-0.md), [`phase-1`](docs/checkpoints/phase-1.md),
+> [`phase-2`](docs/checkpoints/phase-2.md), [`phase-3`](docs/checkpoints/phase-3.md),
+> [`phase-4`](docs/checkpoints/phase-4.md), [`phase-5`](docs/checkpoints/phase-5.md) —
+> what each delivered, what was verified, and what is still open.
 
 ## Stack
 
@@ -153,9 +155,11 @@ Defined once in `apps/api/src/storage/buckets.ts`; all **private**.
 public bucket back to private), then verifies. Files are served only through signed URLs
 (max 1 h; visit files 10 min) issued by the API after an authorization check. Uploads pass
 through the web server, so each file is limited to **4 MB** (Vercel's request-body limit),
-below the bucket limits.
+below the bucket limits; a ticket post carries at most 3 files and 4 MB in total (10 files
+per ticket).
 
-**Without Supabase (development and tests only):** the API keeps visit files on local disk
+**Without Supabase (development and tests only):** the API keeps visit files and ticket
+attachments on local disk
 (the system temp folder, `ftms-local-storage/`) and issues HMAC-signed, expiring links
 `/files/<token>`, which the web app proxies to the API. Production never uses this driver:
 it requires the Supabase variables at boot.
@@ -227,7 +231,10 @@ matched and reviewed), profile corrections and group moves, program settings, a 
 two of three groups (the third sees and receives nothing), document links, cancellation,
 a weekly schedule and a day off, and — with Chromium's virtual platform authenticator and
 a fixed geolocation — biometric enrollment and sign-in, a scanned check-in link that goes
-through sign-in, a confirmed check-in, faculty corrections and a report download; it reads
+through sign-in, a confirmed check-in, faculty corrections and a report download, then a
+complaint with an attachment answered and resolved by staff (with an internal note the
+student never sees) and a group swap accepted by the other student and approved by the
+faculty, checked from both students' side and in the audit history; it reads
 emailed codes from the API's log (no SMTP in tests). The two suites run one after the
 other because they share the database.
 
@@ -373,6 +380,45 @@ usernameless ("Sign in with fingerprint or face"), so it reveals no account. Pas
 email-code sign-in always remain. The relying party is the web app's host
 (`WEB_APP_URL`, or `WEBAUTHN_RP_ID` for a parent domain); browsers require HTTPS outside
 `localhost`.
+
+## Support tickets and group swaps (Phase 5)
+
+- **Tickets (§13).** Students open `/tickets`, pick a category — complaint / problem,
+  suggestion / question, or group swap — and the form follows the choice; their name,
+  seat number and group come from the account. Complaints and suggestions take a subject,
+  a description and optional files (PDF, JPEG, PNG, WebP; checked by content, stored in
+  the private `ticket-attachments` bucket, opened through short-lived signed links). The
+  list filters by category and status. Each ticket shows the conversation, the outcome
+  and the status history.
+- **Processing (§13.4).** Holders of `tickets.process` see the queue (open and in progress
+  by default; search by number, subject, student name or seat), reply, add internal notes
+  the student never sees, and set the status with an optional outcome. The first staff
+  reply marks a ticket in progress; a student reply reopens a resolved one; closed tickets
+  take no messages until staff reopen them. The student is notified of replies and status
+  changes. **Students never see which staff member answered or decided** — staff appear as
+  "Training office"; the names stay in the staff views and the audit log.
+- **Group swaps (§14).** A swap is a ticket plus a request: the student chooses another
+  active group and gives the seat number of a student in it (the full name is an optional
+  consistency check). An unknown seat, a student not in that group or without an active
+  account, and a name that does not match all get the same answer, so the form reveals
+  nothing about other students; self swaps and the student's own group are refused. The other student is notified, opens the request and
+  accepts or declines (optional reason); acceptance alone changes nothing and sends it to
+  `group_swaps.decide` holders at `/group-swaps`, who see both students' groups then and
+  now, and approve or reject with a **mandatory reason** shown to both students. The
+  requester may withdraw an open request. Rejected requests stay in history and never
+  block a new one.
+- **Integrity.** A student takes part in at most one open request (as either side),
+  enforced in the service under row locks and by a database trigger. Approval locks both
+  students, rechecks their current groups, and moves both in one transaction (membership
+  source `SWAP`); a deferred database check refuses to commit an approval without the full
+  exchange. If either student's group changed by other means, open requests are closed
+  automatically (`GROUP_CHANGED`) and both students are told; an approval attempt on such
+  a request closes it instead. Attendance records keep the group they were made under.
+- **Audit (§14.7).** `/group-swaps/history` (`group_swaps.audit`, the Training Director)
+  lists every request with both students, their original groups, the target, each
+  decision with who made it (name and role), reasons, timestamps and the final status.
+- **Limits.** 10 new tickets and 10 swap requests per student per hour; 60 messages per
+  hour.
 
 ## Languages
 

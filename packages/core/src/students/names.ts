@@ -50,6 +50,26 @@ export const namesMatch = (a: string, b: string): boolean => {
   return left !== '' && left === nameMatchKey(b);
 };
 
+/**
+ * §14.1: a name typed for another student is only a consistency check. It
+ * passes when it is the record's full name, or when at least two of its words
+ * appear in the record's name in the same order (e.g. first and family name).
+ * Spelling variants are absorbed by `nameMatchKey`.
+ */
+export function nameConsistentWith(typed: string, fullName: string): boolean {
+  const words = (value: string) => value.split(/\s+/u).map(nameMatchKey).filter(Boolean);
+  const wanted = words(typed);
+  if (wanted.length === 0) return false;
+  if (namesMatch(typed, fullName)) return true;
+  if (wanted.length < 2) return false;
+  let next = 0;
+  for (const word of words(fullName)) {
+    if (word === wanted[next]) next += 1;
+    if (next === wanted.length) return true;
+  }
+  return false;
+}
+
 /** One name part: tidied, 1–60 characters, letters required. */
 export const NamePartSchema = z
   .string()

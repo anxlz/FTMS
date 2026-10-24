@@ -9,6 +9,7 @@ export interface NotificationText {
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
 
 /**
  * Notifications store a type and parameters (§12); this turns them into text in
@@ -126,6 +127,59 @@ export async function notificationTexts(items: Notification[]): Promise<Notifica
           title: t('biometricRevoked'),
           body: t('biometricRevokedBody', { device: str(d.deviceName) }),
         };
+      case 'ticket.replied':
+        return { title: t('ticketReplied', { number: num(d.number) }), body: str(d.subject) };
+      case 'ticket.status_changed': {
+        const status = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(str(d.status))
+          ? str(d.status)
+          : 'OPEN';
+        return {
+          title: t(`ticketStatus.${status}`, { number: num(d.number) }),
+          body: join(str(d.subject), str(d.note) ? t('note', { note: str(d.note) }) : ''),
+        };
+      }
+      case 'group_swap.requested':
+        return {
+          title: t('swapRequested', { name: str(d.requesterName) }),
+          body: t('swapRequestedBody', {
+            name: str(d.requesterName),
+            seat: str(d.requesterSeat),
+            to: str(d.requesterGroup),
+            from: str(d.counterpartGroup),
+          }),
+        };
+      case 'group_swap.accepted':
+        return {
+          title: t('swapAccepted', { name: str(d.counterpartName) }),
+          body: t('swapAcceptedBody', { group: str(d.requesterGroup) }),
+        };
+      case 'group_swap.under_review':
+        return {
+          title: t('swapUnderReview'),
+          body: t('swapUnderReviewBody', {
+            name: str(d.requesterName),
+            group: str(d.counterpartGroup),
+          }),
+        };
+      case 'group_swap.counterpart_rejected':
+        return {
+          title: t('swapDeclined', { name: str(d.counterpartName) }),
+          body: join(reason(d), t('swapDeclinedBody', { group: str(d.requesterGroup) })),
+        };
+      case 'group_swap.approved':
+        return {
+          title: t('swapApproved'),
+          body: t('swapApprovedBody', { group: str(d.newGroup) }),
+        };
+      case 'group_swap.rejected':
+        return { title: t('swapRejected'), body: join(reason(d), t('swapRejectedBody')) };
+      case 'group_swap.withdrawn':
+        return {
+          title: t('swapWithdrawn', { name: str(d.requesterName) }),
+          body: t('swapWithdrawnBody'),
+        };
+      case 'group_swap.cancelled':
+        return { title: t('swapCancelled'), body: t('swapCancelledBody') };
       default:
         return { title: type, body: '' };
     }

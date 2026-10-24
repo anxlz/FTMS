@@ -144,7 +144,7 @@ export const StudentRecordSchema = z.object({
 });
 export type StudentRecord = z.infer<typeof StudentRecordSchema>;
 
-export const MEMBERSHIP_SOURCES = ['MANUAL', 'IMPORT', 'VERIFICATION'] as const;
+export const MEMBERSHIP_SOURCES = ['MANUAL', 'IMPORT', 'VERIFICATION', 'SWAP'] as const;
 export type MembershipSource = (typeof MEMBERSHIP_SOURCES)[number];
 
 export const StudentDetailSchema = StudentRecordSchema.extend({

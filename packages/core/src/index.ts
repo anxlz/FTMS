@@ -9,6 +9,8 @@ export * from './auth/roles';
 export * from './constants';
 export * from './errors';
 export * from './health';
+export * from './requests/contracts';
+export * from './requests/group-swap';
 export * from './i18n';
 export * from './scheduling/contracts';
 export * from './scheduling/time';

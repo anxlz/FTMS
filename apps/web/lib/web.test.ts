@@ -6,6 +6,10 @@ import {
   BIOMETRIC_FALLBACKS,
   CHECK_IN_STATES,
   GEOLOCATION_POLICIES,
+  GROUP_SWAP_CANCEL_REASONS,
+  GROUP_SWAP_DECISION_KINDS,
+  GROUP_SWAP_DECISIONS,
+  GROUP_SWAP_STATUSES,
   IMPORT_COLUMNS,
   IMPORT_ROW_ACTIONS,
   IMPORT_ROW_ERRORS,
@@ -16,6 +20,9 @@ import {
   REQUEST_STATUSES,
   ROLES,
   ROLE_DEFAULT_PERMISSIONS,
+  TICKET_CATEGORIES,
+  TICKET_FILTER_STATUSES,
+  TICKET_STATUSES,
   VERIFICATION_ISSUES,
   VISIT_FILE_KINDS,
   VISIT_PHASES,
@@ -111,6 +118,46 @@ describe('message catalogs', () => {
     for (const catalog of [ar, en] as Tree[]) {
       for (const key of required)
         expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
+    }
+  });
+
+  it('translate every Phase 5 code: ticket and swap statuses, categories, decisions', () => {
+    const required = [
+      ...TICKET_CATEGORIES.flatMap((c) => [
+        `tickets.categories.${c}`,
+        `tickets.categoryHints.${c}`,
+      ]),
+      ...TICKET_STATUSES.flatMap((c) => [
+        `tickets.status.${c}`,
+        `notifications.text.ticketStatus.${c}`,
+      ]),
+      ...TICKET_FILTER_STATUSES.map((c) => `tickets.filterStatus.${c}`),
+      ...GROUP_SWAP_STATUSES.flatMap((c) => [`groupSwaps.status.${c}`, `groupSwaps.outcome.${c}`]),
+      ...GROUP_SWAP_DECISION_KINDS.map((c) => `groupSwaps.decisionKinds.${c}`),
+      ...GROUP_SWAP_DECISIONS.map((c) => `groupSwaps.decisionValues.${c}`),
+      ...GROUP_SWAP_CANCEL_REASONS.map((c) => `groupSwaps.cancelReasons.${c}`),
+      ...[
+        'TEXT_REQUIRED',
+        'TEXT_TOO_LONG',
+        'SUBJECT_REQUIRED',
+        'DESCRIPTION_REQUIRED',
+        'MESSAGE_REQUIRED',
+        'REASON_REQUIRED',
+      ].map((c) => `errors.${c}`),
+    ];
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of required)
+        expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
+    }
+  });
+
+  it('never names the deciding faculty member in student-facing swap text (§13.3)', () => {
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of ['swapApproved', 'swapApprovedBody', 'swapRejected', 'swapRejectedBody']) {
+        const text = lookup(catalog, `notifications.text.${key}`);
+        expect(typeof text).toBe('string');
+        expect(text).not.toMatch(/\{(?:name|faculty|actor|decidedBy)\}/);
+      }
     }
   });
 
@@ -227,8 +274,10 @@ describe('navigation per role (§18.2)', () => {
           '/schedule',
           '/attendance',
           '/settings',
+          '/tickets',
+          '/group-swaps',
         ]).toContain(item.href);
-      } else expect(item.phase).toBeGreaterThanOrEqual(4);
+      } else expect(item.phase).toBeGreaterThanOrEqual(6);
     }
   });
 });
