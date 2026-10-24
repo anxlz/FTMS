@@ -48,6 +48,10 @@ export type UpdatePreferencesRequest = z.infer<typeof UpdatePreferencesRequestSc
 
 /* ───────────────────────────── Responses ──────────────────────────── */
 
+/** How the current session was established (§4.5: biometric sign-in is its own method). */
+export const AUTH_METHODS = ['PASSWORD', 'EMAIL_CODE', 'BIOMETRIC'] as const;
+export type AuthMethodName = (typeof AUTH_METHODS)[number];
+
 export const MeResponseSchema = z.object({
   id: z.uuid(),
   email: z.email(),
@@ -57,6 +61,7 @@ export const MeResponseSchema = z.object({
   preferredLocale: z.enum(LOCALES),
   /** True until the account sets (first login) or changes (forced) its password. */
   passwordSetupRequired: z.boolean(),
+  sessionMethod: z.enum(AUTH_METHODS),
   /** False after a first sign-in by email code: no current password exists to confirm. */
   hasPassword: z.boolean(),
   permissions: z.array(z.enum(PERMISSION_KEYS as [string, ...string[]])),

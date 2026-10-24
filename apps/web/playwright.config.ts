@@ -38,6 +38,11 @@ export default defineConfig({
       ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } }
       : {}),
   },
+  // The attendance spec builds on the program the scheduling spec configures.
+  projects: [
+    { name: 'core', testIgnore: /attendance\.spec\.ts$/ },
+    { name: 'attendance', testMatch: /attendance\.spec\.ts$/, dependencies: ['core'] },
+  ],
   webServer: [
     {
       // The API logs emails instead of sending them (no SMTP_PASS); tests read codes from this log.

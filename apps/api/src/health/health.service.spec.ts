@@ -33,6 +33,7 @@ function build(deps: Deps = {}) {
         JWT_REFRESH_SECRET: 'b'.repeat(32),
         QR_HMAC_SECRET: 'c'.repeat(32),
         BFF_SHARED_SECRET: 'd'.repeat(32),
+        CRON_SECRET: 'e'.repeat(32),
         WEB_APP_URL: 'https://ftms.example.edu.eg',
       })
     : testConfig();

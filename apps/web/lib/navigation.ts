@@ -22,7 +22,7 @@ interface StaffEntry extends NavItem {
 const STUDENT_NAV: NavItem[] = [
   { key: 'dashboard', href: '/dashboard' },
   { key: 'trainingCalendar', href: '/calendar' },
-  { key: 'attendanceHistory', phase: 4 },
+  { key: 'attendanceHistory', href: '/attendance' },
   { key: 'notifications', href: '/notifications' },
   { key: 'tickets', phase: 5 },
   { key: 'profile', href: '/profile' },
@@ -34,7 +34,7 @@ const STAFF_NAV: StaffEntry[] = [
   { key: 'visits', href: '/visits', anyOf: ['visits.manage'] },
   { key: 'calendar', href: '/calendar' },
   { key: 'groups', href: '/groups', anyOf: ['students.read', 'groups.manage'] },
-  { key: 'attendance', phase: 4, anyOf: ['attendance.read'] },
+  { key: 'attendance', href: '/attendance', anyOf: ['attendance.read'] },
   { key: 'tickets', phase: 5, anyOf: ['tickets.process'] },
   { key: 'groupSwaps', phase: 5, anyOf: ['group_swaps.decide'] },
   {
@@ -46,7 +46,11 @@ const STAFF_NAV: StaffEntry[] = [
   { key: 'activityLogs', phase: 6, anyOf: ['audit.read'] },
   { key: 'reports', phase: 6, anyOf: ['reports.export'] },
   { key: 'users', href: '/admin/users', anyOf: ['users.read'] },
-  { key: 'settings', phase: 4, anyOf: ['attendance.settings.visit'] },
+  {
+    key: 'settings',
+    href: '/settings',
+    anyOf: ['attendance.settings.visit', 'attendance.settings.defaults'],
+  },
   { key: 'profile', href: '/profile' },
 ];
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CheckInPolicySchema } from '../attendance/policy';
 import { GroupRefSchema } from '../students/contracts';
 import {
   addDays,
@@ -57,6 +58,7 @@ export const SUGGESTED_PROGRAM_SETTINGS = {
   durationWeeks: 12,
   allowedAbsences: 2,
   timing: { checkInOpensMinutes: 15, graceMinutes: 15, checkInClosesMinutes: 60 },
+  checkInPolicy: { biometricFallback: 'ALLOW_UNVERIFIED', geolocation: 'REQUIRED' },
 } as const;
 
 /** Last day of a program that starts on `startDate` and lasts `weeks` weeks. */
@@ -72,6 +74,7 @@ export const ProgramSchema = z.object({
   timeZone: z.string(),
   timing: VisitTimingSchema,
   allowedAbsences: z.number().int(),
+  checkInPolicy: CheckInPolicySchema,
   createdAt: IsoDate,
   updatedAt: IsoDate,
 });
@@ -86,12 +89,14 @@ export const CreateProgramRequestSchema = z.object({
   durationWeeks: z.number().int().min(1).max(PROGRAM_MAX_WEEKS),
   allowedAbsences: z.number().int().min(0).max(100),
   timing: VisitTimingSchema,
+  checkInPolicy: CheckInPolicySchema.optional(),
 });
 export type CreateProgramRequest = z.infer<typeof CreateProgramRequestSchema>;
 
 /**
  * Schedule fields need `schedule.manage`; attendance defaults (timing, absence
- * allowance) need `attendance.settings.defaults`. Each change is audited (§11.3).
+ * allowance, check-in policy) need `attendance.settings.defaults`. Each change
+ * is audited (§11.3).
  */
 export const UpdateProgramRequestSchema = z
   .object({
@@ -100,6 +105,7 @@ export const UpdateProgramRequestSchema = z
     durationWeeks: z.number().int().min(1).max(PROGRAM_MAX_WEEKS).optional(),
     allowedAbsences: z.number().int().min(0).max(100).optional(),
     timing: VisitTimingSchema.optional(),
+    checkInPolicy: CheckInPolicySchema.optional(),
     reason: OptionalReason,
   })
   .refine(
@@ -108,7 +114,8 @@ export const UpdateProgramRequestSchema = z
       v.startDate !== undefined ||
       v.durationWeeks !== undefined ||
       v.allowedAbsences !== undefined ||
-      v.timing !== undefined,
+      v.timing !== undefined ||
+      v.checkInPolicy !== undefined,
     { error: 'NOTHING_TO_UPDATE' },
   );
 export type UpdateProgramRequest = z.infer<typeof UpdateProgramRequestSchema>;
@@ -490,6 +497,10 @@ export const NOTIFICATION_TYPES = [
   'verification.rejected',
   'profile_change.approved',
   'profile_change.rejected',
+  'attendance.absent',
+  'attendance.corrected',
+  'security.biometric_enabled',
+  'security.biometric_revoked',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

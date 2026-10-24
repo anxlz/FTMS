@@ -74,8 +74,21 @@ export const EnvObjectSchema = z.object({
   // the web server. Without it the API uses the connecting address.
   BFF_SHARED_SECRET: optional(signingSecret),
 
-  // Public URL of the web app, used for links in emails.
+  // Public URL of the web app, used for links in emails and QR codes. It is also
+  // the WebAuthn origin: biometric ceremonies run on the web app's pages (§4.5).
   WEB_APP_URL: optional(z.url({ protocol: /^https?$/ })),
+  // WebAuthn relying-party id. Default: the host of WEB_APP_URL. Set it to a parent
+  // domain only if passkeys must work on several subdomains.
+  WEBAUTHN_RP_ID: optional(
+    z
+      .string()
+      .toLowerCase()
+      .regex(/^(localhost|([a-z0-9-]+\.)+[a-z]{2,})$/, 'must be a host name'),
+  ),
+
+  // Shared with the pg_cron job that triggers automatic absence processing (§8.3).
+  // Without it, the internal endpoint is disabled.
+  CRON_SECRET: optional(signingSecret),
 
   // University email domains accepted for students (§4.2), comma-separated.
   // Subdomains match too (e.g. std.agr.asu.edu.eg).
@@ -104,6 +117,7 @@ export const PRODUCTION_REQUIRED = [
   'QR_HMAC_SECRET',
   'BFF_SHARED_SECRET',
   'WEB_APP_URL',
+  'CRON_SECRET',
 ] as const satisfies readonly (keyof z.infer<typeof EnvObjectSchema>)[];
 
 /** Variables that only make sense together. */

@@ -108,3 +108,39 @@ export function accountExistsEmail(webAppUrl?: string): EmailContent {
     ].join('\n'),
   };
 }
+
+/** Security notice when a biometric device is enabled or revoked (§4.5, §12). */
+export function biometricChangeEmail(params: {
+  enabled: boolean;
+  deviceName: string;
+  webAppUrl?: string;
+}): EmailContent {
+  const link = params.webAppUrl ? `${params.webAppUrl.replace(/\/$/, '')}/profile` : null;
+  return params.enabled
+    ? {
+        subject: 'تفعيل الدخول بالبصمة على جهاز جديد | Biometric sign-in enabled on a device',
+        text: [
+          SYSTEM_AR,
+          `فُعِّل الدخول بالبصمة لحسابك على الجهاز «${params.deviceName}».`,
+          'إذا لم تقم بذلك فألغِ هذا الجهاز من صفحة الملف الشخصي وغيّر كلمة المرور فورًا.',
+          ...(link ? [`إدارة الأجهزة: ${link}`] : []),
+          '',
+          SYSTEM_EN,
+          `Biometric sign-in was enabled for your account on "${params.deviceName}".`,
+          'If this was not you, revoke the device on your profile page and change your password now.',
+          ...(link ? [`Manage devices: ${link}`] : []),
+        ].join('\n'),
+      }
+    : {
+        subject: 'إلغاء الدخول بالبصمة على جهاز | Biometric sign-in revoked on a device',
+        text: [
+          SYSTEM_AR,
+          `أُلغي الدخول بالبصمة لحسابك على الجهاز «${params.deviceName}». لم يعد بالإمكان استخدامه للدخول.`,
+          'يبقى الدخول بكلمة المرور أو برمز البريد متاحًا دائمًا.',
+          '',
+          SYSTEM_EN,
+          `Biometric sign-in on "${params.deviceName}" was revoked for your account. It can no longer be used to sign in.`,
+          'Signing in with your password or an email code always remains available.',
+        ].join('\n'),
+      };
+}

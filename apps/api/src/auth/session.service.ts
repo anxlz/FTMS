@@ -18,7 +18,8 @@ export type SessionRevokeReason =
   | 'account_suspended'
   | 'refresh_reuse'
   | 'admin_reset'
-  | 'account_unlinked';
+  | 'account_unlinked'
+  | 'biometric_revoked';
 
 /**
  * Sessions are rows; refresh tokens are signed JWTs whose id (`jti`) is stored
@@ -38,6 +39,7 @@ export class SessionService {
     method: AuthMethod,
     context: RequestContext,
     tx?: Prisma.TransactionClient,
+    options: { webauthnCredentialId?: string } = {},
   ): Promise<TokenPair & { sessionId: string }> {
     const jti = randomToken();
     const expiresAt = new Date(Date.now() + AUTH.sessionSeconds * 1000);
@@ -49,6 +51,7 @@ export class SessionService {
         expiresAt,
         ip: context.ip,
         userAgent: context.userAgent,
+        webauthnCredentialId: options.webauthnCredentialId ?? null,
       },
     });
     const pair = await this.issue(user, session.id, jti, expiresAt);
@@ -59,7 +62,7 @@ export class SessionService {
   async rotate(
     claims: RefreshClaims,
     context: RequestContext,
-  ): Promise<{ user: UserWithRelations; tokens: TokenPair }> {
+  ): Promise<{ user: UserWithRelations; tokens: TokenPair; method: AuthMethod }> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const now = new Date();
       const session = await this.prisma.authSession.findUnique({
@@ -111,7 +114,7 @@ export class SessionService {
       });
       if (updated.count === 1) {
         const tokens = await this.issue(session.user, session.id, jti, session.expiresAt);
-        return { user: session.user, tokens };
+        return { user: session.user, tokens, method: session.method };
       }
     }
     throw Errors.sessionInvalid();

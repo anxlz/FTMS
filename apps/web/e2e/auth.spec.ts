@@ -20,7 +20,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
 
     await input(page, 'identifier').fill('ST22425244@AGR.asu.edu.eg');
     await input(page, 'password').fill(oneTimePassword());
-    await page.getByRole('button', { name: 'دخول' }).click();
+    await page.getByRole('button', { name: 'دخول', exact: true }).click();
     await expect(page).toHaveURL(/\/set-password$/);
 
     // Nothing else is reachable until the password is replaced.
@@ -49,7 +49,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     await expect(page).toHaveURL(/\/login$/);
     await input(page, 'identifier').fill(ADMIN_EMAIL);
     await input(page, 'password').fill(oneTimePassword());
-    await page.getByRole('button', { name: 'دخول' }).click();
+    await page.getByRole('button', { name: 'دخول', exact: true }).click();
     await expect(page.getByRole('main').getByRole('alert')).toContainText(
       'بيانات الدخول غير صحيحة',
     );
@@ -65,7 +65,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     await page.goto('/login');
     await input(page, 'identifier').fill(ADMIN_EMAIL);
     await input(page, 'password').fill(ADMIN_NEW_PASSWORD);
-    await page.getByRole('button', { name: 'دخول' }).click();
+    await page.getByRole('button', { name: 'دخول', exact: true }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.getByRole('button', { name: 'English' }).click();
@@ -78,7 +78,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     await expect(other.locator('html')).toHaveAttribute('lang', 'ar'); // no cookie yet → Arabic
     await input(other, 'identifier').fill(ADMIN_EMAIL);
     await input(other, 'password').fill(ADMIN_NEW_PASSWORD);
-    await other.getByRole('button', { name: 'دخول' }).click();
+    await other.getByRole('button', { name: 'دخول', exact: true }).click();
     await expect(other).toHaveURL(/\/dashboard$/);
     await expect(other.locator('html')).toHaveAttribute('lang', 'en');
     await fresh.close();
@@ -97,7 +97,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     await page.goto('/login');
     await input(page, 'identifier').fill(ADMIN_EMAIL);
     await input(page, 'password').fill(ADMIN_NEW_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('navigation').getByRole('link', { name: 'Accounts' }).click();
     await page.locator('summary').click();
     await input(page, 'email').fill(FACULTY.email);
@@ -113,7 +113,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     // Without a password, email + password cannot get in.
     await input(fp, 'identifier').fill(FACULTY.email);
     await input(fp, 'password').fill('any password at all');
-    await fp.getByRole('button', { name: 'Sign in' }).click();
+    await fp.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(fp.getByRole('main').getByRole('alert')).toContainText(
       'Incorrect sign-in details',
     );
@@ -150,7 +150,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await input(page, 'identifier').fill(FACULTY.email);
     await input(page, 'password').fill(FACULTY.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await first.close();
@@ -161,7 +161,7 @@ test.describe.serial('authentication in the browser (§4.3, §2)', () => {
     await again.goto('/login');
     await input(again, 'identifier').fill(FACULTY.email);
     await input(again, 'password').fill(FACULTY.password);
-    await again.getByRole('button', { name: 'دخول' }).click();
+    await again.getByRole('button', { name: 'دخول', exact: true }).click();
     await expect(again).toHaveURL(/\/dashboard$/);
     await expect(again.locator('html')).toHaveAttribute('lang', 'en');
     await second.close();

@@ -1,5 +1,6 @@
 import { ListUsersResponseSchema, type Role, UserDetailSchema } from '@ftms/core';
 import request from 'supertest';
+import { AttendanceTokens } from '../src/attendance/attendance-tokens';
 import { BackgroundTasks } from '../src/common/background-tasks.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
@@ -78,6 +79,10 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
     fileId: string;
     schedule: string;
     exception: string;
+    /** Phase 4: a finished visit of the calling student's group, and a signed QR token. */
+    pastVisit: string;
+    checkInToken: string;
+    callingStudentRecord: string;
   }
 
   interface Case {
@@ -651,6 +656,107 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
       send: (c) => http().post('/notifications/read-all').set(as(c)),
       expected: SIGNED_IN(200),
     },
+    /* ── Phase 4: attendance, QR codes, exports, biometrics ── */
+    {
+      name: 'GET /visits/:id/attendance',
+      send: (c, t) => http().get(`/visits/${t.pastVisit}/attendance`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'PUT /visits/:id/attendance/:studentId',
+      send: (c, t) =>
+        http()
+          .put(`/visits/${t.pastVisit}/attendance/${t.callingStudentRecord}`)
+          .set(as(c))
+          .send({ status: 'PRESENT', reason: 'matrix test' }),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /visits/:id/qr',
+      send: (c, t) => http().get(`/visits/${t.visit}/qr`).set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /attendance/overview',
+      send: (c) => http().get('/attendance/overview').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /attendance/export',
+      send: (c) => http().get('/attendance/export?format=csv').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /me/attendance',
+      send: (c) => http().get('/me/attendance').set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'GET /attendance/check-in/:token',
+      send: (c, t) => http().get(`/attendance/check-in/${t.checkInToken}`).set(as(c)),
+      expected: STUDENT_ONLY(200),
+    },
+    {
+      name: 'POST /attendance/check-in/options (window not open yet)',
+      send: (c, t) =>
+        http().post('/attendance/check-in/options').set(as(c)).send({ token: t.checkInToken }),
+      expected: STUDENT_ONLY(409),
+    },
+    {
+      name: 'POST /attendance/check-in (window not open yet)',
+      send: (c, t) =>
+        http()
+          .post('/attendance/check-in')
+          .set(as(c))
+          .send({ token: t.checkInToken, location: { latitude: 30, longitude: 31 } }),
+      expected: STUDENT_ONLY(409),
+    },
+    {
+      name: 'POST /internal/attendance/process-absences (no cron key)',
+      send: (c) => http().post('/internal/attendance/process-absences').set(as(c)),
+      expected: {
+        SUPER_ADMIN: 401,
+        TRAINING_DIRECTOR: 401,
+        FACULTY: 401,
+        STUDENT: 401,
+        ANONYMOUS: 401,
+      },
+    },
+    {
+      name: 'GET /auth/biometric/credentials',
+      send: (c) => http().get('/auth/biometric/credentials').set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /auth/biometric/credentials/options',
+      send: (c) => http().post('/auth/biometric/credentials/options').set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /auth/biometric/credentials (malformed)',
+      send: (c) => http().post('/auth/biometric/credentials').set(as(c)).send({}),
+      expected: SIGNED_IN(400),
+    },
+    {
+      name: 'DELETE /auth/biometric/credentials/:id (not own)',
+      send: (c) =>
+        http()
+          .delete('/auth/biometric/credentials/01900000-0000-7000-8000-000000000000')
+          .set(as(c))
+          .send({}),
+      expected: SIGNED_IN(404),
+    },
+    {
+      name: 'POST /auth/biometric/login/options (public)',
+      send: (c) => http().post('/auth/biometric/login/options').set(as(c)),
+      expected: {
+        SUPER_ADMIN: 200,
+        TRAINING_DIRECTOR: 200,
+        FACULTY: 200,
+        STUDENT: 200,
+        ANONYMOUS: 200,
+      },
+    },
     {
       name: 'GET /local-files/:token (public; forged token)',
       send: (c) => http().get('/local-files/e30.0000').set(as(c)),
@@ -711,6 +817,10 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         },
       });
 
+      const pastVisit = await createVisit(app, program.id, [studentGroup.id], {
+        date: cairoDate(-1),
+      });
+
       const target: Target = {
         faculty: await createUser(app, 'FACULTY'),
         student,
@@ -723,6 +833,9 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         fileId: file.id,
         schedule: schedule.id,
         exception: exception.id,
+        pastVisit: pastVisit.id,
+        checkInToken: app.get(AttendanceTokens).sign(visit.id),
+        callingStudentRecord: await recordOf(app, users.STUDENT.id),
       };
       const res = await testCase.send(caller, target);
       expect({ status: res.status, code: res.body?.code }).toMatchObject({

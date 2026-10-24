@@ -115,6 +115,13 @@ export default async function SchedulePage({
                   })}
                 </dd>
               </div>
+              <div>
+                <dt>{t('schedule.policy.title')}</dt>
+                <dd>
+                  {t(`schedule.policy.fallback.${program.checkInPolicy.biometricFallback}`)} ·{' '}
+                  {t(`schedule.policy.location.${program.checkInPolicy.geolocation}`)}
+                </dd>
+              </div>
             </dl>
             {canPlan && (
               <details>

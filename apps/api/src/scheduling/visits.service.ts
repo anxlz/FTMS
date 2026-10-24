@@ -17,6 +17,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { actorOf, type AuthPrincipal } from '../auth/principal';
 import { Errors } from '../common/api-exception';
+import { Clock } from '../common/clock';
 import { type RequestContext } from '../common/request-context';
 import { type Prisma, type TrainingVisit } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -109,6 +110,7 @@ export class VisitsService {
     private readonly notifications: NotificationsService,
     private readonly programs: ProgramService,
     private readonly files: FileStore,
+    private readonly clock: Clock,
   ) {}
 
   /* ─────────────────────────── reading ─────────────────────────── */
@@ -145,7 +147,7 @@ export class VisitsService {
       include: VISIT_INCLUDE,
       orderBy: [{ startsAt: 'asc' }, { title: 'asc' }],
     });
-    const now = new Date();
+    const now = this.clock.now();
     return {
       from: query.from,
       to: query.to,
@@ -170,7 +172,7 @@ export class VisitsService {
     return this.toDetail(visit);
   }
 
-  async toDetail(visit: VisitWithDetail, now = new Date()): Promise<VisitDetail> {
+  async toDetail(visit: VisitWithDetail, now = this.clock.now()): Promise<VisitDetail> {
     const link = (f: VisitWithDetail['files'][number]) =>
       this.files.link(
         f.bucket as BucketId,
@@ -268,7 +270,7 @@ export class VisitsService {
     if (input.timing && !principal.permissions.has('attendance.settings.visit')) {
       throw Errors.forbidden();
     }
-    const now = new Date();
+    const now = this.clock.now();
     const { id, notified } = await this.prisma.$transaction(async (tx) => {
       const program = await this.programs.requireCurrent(tx);
       ProgramService.assertWithin(program, input.date, 'date');
@@ -331,7 +333,7 @@ export class VisitsService {
     if (input.timing !== undefined && !principal.permissions.has('attendance.settings.visit')) {
       throw Errors.forbidden();
     }
-    const now = new Date();
+    const now = this.clock.now();
     const notified = await this.prisma.$transaction(async (tx) => {
       const before = await this.lock(tx, id);
       if (before.status === 'CANCELLED') throw SchedulingErrors.visitCancelled();
@@ -515,13 +517,13 @@ export class VisitsService {
     const notified = await this.prisma.$transaction(async (tx) => {
       const before = await this.lock(tx, id);
       if (before.status === 'CANCELLED') throw SchedulingErrors.visitCancelled();
-      if (visitPhase(before, new Date()) === 'FINISHED') throw SchedulingErrors.visitOver();
+      if (visitPhase(before, this.clock.now()) === 'FINISHED') throw SchedulingErrors.visitOver();
       const updated = await tx.trainingVisit.update({
         where: { id },
         data: {
           status: 'CANCELLED',
           cancelReason: reason,
-          cancelledAt: new Date(),
+          cancelledAt: this.clock.now(),
           cancelledById: principal.userId,
           detached: before.scheduleId !== null || before.detached,
           updatedById: principal.userId,
@@ -555,7 +557,7 @@ export class VisitsService {
     const notified = await this.prisma.$transaction(async (tx) => {
       const before = await this.lock(tx, id);
       if (before.status !== 'CANCELLED') throw SchedulingErrors.visitNotCancelled();
-      if (visitPhase(before, new Date()) === 'FINISHED') throw SchedulingErrors.visitOver();
+      if (visitPhase(before, this.clock.now()) === 'FINISHED') throw SchedulingErrors.visitOver();
       const updated = await tx.trainingVisit.update({
         where: { id },
         data: {

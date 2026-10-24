@@ -1,5 +1,11 @@
 import {
   API_ERROR_CODES,
+  ATTENDANCE_FILTER_STATUSES,
+  ATTENDANCE_SOURCES,
+  ATTENDANCE_STATUSES,
+  BIOMETRIC_FALLBACKS,
+  CHECK_IN_STATES,
+  GEOLOCATION_POLICIES,
   IMPORT_COLUMNS,
   IMPORT_ROW_ACTIONS,
   IMPORT_ROW_ERRORS,
@@ -22,9 +28,11 @@ import en from '../messages/en.json';
 import { intlLocale, resolveLocale } from '../i18n/locale';
 import { needsRefresh, tokenExpiresAt } from './auth/tokens';
 import { lastDayOf, monthGrid, parseMonth, shiftMonth, WEEK_ORDER } from './calendar';
+import { ceremonyErrorCode } from './device';
 import { showValue } from './display';
 import { navigationFor } from './navigation';
 import { permissionMessageKey } from './permission-label';
+import { safeNext } from './safe-next';
 
 type Tree = { [key: string]: string | Tree };
 
@@ -75,6 +83,30 @@ describe('message catalogs', () => {
       ...VISIT_STATUSES.map((c) => `visits.status.${c}`),
       ...VISIT_PHASES.map((c) => `visits.phase.${c}`),
       ...VISIT_FILE_KINDS.map((c) => `visits.files.kinds.${c}`),
+    ];
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of required)
+        expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
+    }
+  });
+
+  it('translate every Phase 4 code: statuses, sources, window states, policies, device errors', () => {
+    const required = [
+      ...ATTENDANCE_STATUSES.map((c) => `attendance.status.${c}`),
+      ...ATTENDANCE_STATUSES.map((c) => `notifications.text.attendanceStatus.${c}`),
+      ...ATTENDANCE_SOURCES.map((c) => `attendance.source.${c}`),
+      ...ATTENDANCE_FILTER_STATUSES.map((c) => `attendance.filterStatus.${c}`),
+      ...CHECK_IN_STATES.map((c) => `attendance.window.${c}`),
+      ...BIOMETRIC_FALLBACKS.map((c) => `schedule.policy.fallback.${c}`),
+      ...GEOLOCATION_POLICIES.map((c) => `schedule.policy.location.${c}`),
+      ...[
+        'BIOMETRIC_CANCELLED',
+        'BIOMETRIC_UNSUPPORTED',
+        'GEOLOCATION_DENIED',
+        'GEOLOCATION_UNAVAILABLE',
+        'LATE_MINUTES_REQUIRED',
+        'MINUTES_ONLY_WHEN_LATE',
+      ].map((c) => `errors.${c}`),
     ];
     for (const catalog of [ar, en] as Tree[]) {
       for (const key of required)
@@ -193,6 +225,8 @@ describe('navigation per role (§18.2)', () => {
           '/notifications',
           '/visits',
           '/schedule',
+          '/attendance',
+          '/settings',
         ]).toContain(item.href);
       } else expect(item.phase).toBeGreaterThanOrEqual(4);
     }
@@ -227,5 +261,43 @@ describe('calendar month view (§18.1)', () => {
     expect(showValue({ name: 'Farm', latitude: null, mapUrl: 'https://x' })).toBe(
       'name: Farm · mapUrl: https://x',
     );
+  });
+});
+
+describe('returning after sign-in (§7.2 check-in links)', () => {
+  it('accepts only paths of this site', () => {
+    expect(safeNext('/check-in/AbC-123_xyz')).toBe('/check-in/AbC-123_xyz');
+    expect(safeNext('/visits/1?tab=a')).toBe('/visits/1?tab=a');
+    for (const bad of [
+      'https://evil.example',
+      '//evil.example/x',
+      '/\\evil.example',
+      'javascript:alert(1)',
+      '/check-in/a\nb',
+      '/a b',
+      '',
+      null,
+      ['/dashboard'],
+      `/${'a'.repeat(400)}`,
+    ]) {
+      expect(safeNext(bad)).toBeNull();
+    }
+  });
+});
+
+describe('device ceremonies (§4.5)', () => {
+  const named = (name: string, code?: string) => Object.assign(new Error('x'), { name, code });
+
+  it('maps browser WebAuthn failures to message codes', () => {
+    expect(ceremonyErrorCode(named('NotAllowedError'))).toBe('BIOMETRIC_CANCELLED');
+    expect(ceremonyErrorCode(named('AbortError'))).toBe('BIOMETRIC_CANCELLED');
+    expect(ceremonyErrorCode(named('InvalidStateError'))).toBe('BIOMETRIC_CREDENTIAL_EXISTS');
+    expect(ceremonyErrorCode(named('Error', 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED'))).toBe(
+      'BIOMETRIC_CREDENTIAL_EXISTS',
+    );
+    expect(ceremonyErrorCode(named('NotSupportedError'))).toBe('BIOMETRIC_UNSUPPORTED');
+    expect(ceremonyErrorCode(named('SecurityError'))).toBe('BIOMETRIC_UNSUPPORTED');
+    expect(ceremonyErrorCode('weird')).toBe('BIOMETRIC_FAILED');
+    expect(ceremonyErrorCode(null)).toBe('BIOMETRIC_FAILED');
   });
 });

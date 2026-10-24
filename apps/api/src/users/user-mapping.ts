@@ -6,7 +6,7 @@ import {
   type UserDetail,
   type UserSummary,
 } from '@ftms/core';
-import { Prisma } from '../generated/prisma/client';
+import { type AuthMethod, Prisma } from '../generated/prisma/client';
 
 /** Relations needed to describe an account (profile + grants). */
 export const USER_INCLUDE = {
@@ -28,7 +28,7 @@ export const passwordSetupRequired = (
   user: Pick<UserWithRelations, 'passwordHash' | 'mustChangePassword'>,
 ) => user.passwordHash === null || user.mustChangePassword;
 
-export function toMe(user: UserWithRelations): MeResponse {
+export function toMe(user: UserWithRelations, sessionMethod: AuthMethod): MeResponse {
   return {
     id: user.id,
     email: user.email,
@@ -37,6 +37,7 @@ export function toMe(user: UserWithRelations): MeResponse {
     displayName: user.displayName,
     preferredLocale: user.preferredLocale,
     passwordSetupRequired: passwordSetupRequired(user),
+    sessionMethod,
     hasPassword: user.passwordHash !== null,
     permissions: effectivePermissions(user),
     studentProfile: user.studentProfile

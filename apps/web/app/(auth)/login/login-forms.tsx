@@ -9,7 +9,7 @@ import { type FormState, IDLE } from '@/lib/forms';
 
 type Tab = 'password' | 'code';
 
-export function LoginForms() {
+export function LoginForms({ next }: { next?: string }) {
   const t = useTranslations('auth');
   const [tab, setTab] = useState<Tab>('password');
 
@@ -32,18 +32,19 @@ export function LoginForms() {
         ))}
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'password' ? <PasswordForm /> : <CodeForm />}
+        {tab === 'password' ? <PasswordForm next={next} /> : <CodeForm />}
       </div>
     </>
   );
 }
 
-function PasswordForm() {
+function PasswordForm({ next }: { next?: string }) {
   const t = useTranslations('auth.login');
   const [state, action] = useActionState(loginAction, IDLE);
   return (
     <form action={action} className="stack" noValidate>
       <FormError state={state} />
+      {next && <input type="hidden" name="next" value={next} />}
       <Field
         label={t('identifier')}
         name="identifier"

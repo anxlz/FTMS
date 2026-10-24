@@ -6,14 +6,25 @@ import {
   isLocale,
   LOCALE_COOKIE,
   type SignupResponse,
+  type WebAuthnOptionsResponse,
 } from '@ftms/core';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { apiFetch } from '../api';
 import { echo, failure, field, type FormState, passwordsMismatch } from '../forms';
+import { safeNext } from '../safe-next';
 import { accessToken, clearSession, homeFor, LOCALE_COOKIE_OPTIONS, storeSession } from './session';
 import { LOCALE_CHOSEN_COOKIE } from './tokens';
+
+/**
+ * After signing in: a required step (password, verification) comes first;
+ * otherwise the page the visitor came from (e.g. a scanned check-in link).
+ */
+const destination = (auth: AuthResponse, next: unknown): string => {
+  const home = homeFor(auth.user);
+  return home === '/dashboard' ? (safeNext(next) ?? home) : home;
+};
 
 /** Email or seat number + password (§4.3). */
 export async function loginAction(_: FormState, data: FormData): Promise<FormState> {
@@ -23,7 +34,37 @@ export async function loginAction(_: FormState, data: FormData): Promise<FormSta
   });
   if (!result.ok) return failure(result, echo(data, ['identifier']));
   await storeSession(result.data);
-  redirect(homeFor(result.data.user));
+  redirect(destination(result.data, field(data, 'next')));
+}
+
+export type CeremonyStart =
+  | { ok: true; challengeId: string; options: Record<string, unknown> }
+  | { ok: false; error: string; retryAfterMinutes?: number };
+
+/** Biometric sign-in (§4.5), step 1: a challenge for the device's passkey. Names no account. */
+export async function biometricLoginOptionsAction(): Promise<CeremonyStart> {
+  const result = await apiFetch<WebAuthnOptionsResponse>('/auth/biometric/login/options', {
+    method: 'POST',
+  });
+  if (!result.ok) {
+    return { ok: false, error: result.code, retryAfterMinutes: failure(result).retryAfterMinutes };
+  }
+  return { ok: true, challengeId: result.data.challengeId, options: result.data.options };
+}
+
+/** Step 2: the device's signed answer. Redirects on success. */
+export async function biometricLoginAction(input: {
+  challengeId: string;
+  response: unknown;
+  next?: string;
+}): Promise<FormState> {
+  const result = await apiFetch<AuthResponse>('/auth/biometric/login', {
+    method: 'POST',
+    body: { challengeId: input.challengeId, response: input.response },
+  });
+  if (!result.ok) return failure(result);
+  await storeSession(result.data);
+  redirect(destination(result.data, input.next));
 }
 
 /** First login, step 1: email a one-time code. */

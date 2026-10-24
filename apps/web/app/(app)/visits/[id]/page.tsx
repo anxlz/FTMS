@@ -43,6 +43,7 @@ export default async function VisitPage({
   const format = await getFormatter();
   const isStaff = user.role !== 'STUDENT';
   const canManage = user.permissions.includes('visits.manage');
+  const canAttendance = user.permissions.includes('attendance.read');
   const history =
     isStaff &&
     (await apiFetch<VisitHistoryEntry[]>(`/visits/${encodeURIComponent(id)}/history`, {
@@ -192,6 +193,23 @@ export default async function VisitPage({
           </details>
         )}
       </section>
+
+      {isStaff && (canAttendance || canManage) && (
+        <section className="card stack" aria-labelledby="attendance-title">
+          <h2 id="attendance-title">{t('attendance.sectionTitle')}</h2>
+          <p className="muted small">{t('attendance.sectionHint')}</p>
+          <p className="actions">
+            {canAttendance && (
+              <Link href={`/visits/${v.id}/attendance`} className="btn btn-primary">
+                {t('attendance.openRecords')}
+              </Link>
+            )}
+            <Link href={`/visits/${v.id}/qr`} className="btn btn-secondary">
+              {t('attendance.qrCodes')}
+            </Link>
+          </p>
+        </section>
+      )}
 
       {canManage && (
         <section className="card stack" aria-labelledby="manage-title">

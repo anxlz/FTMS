@@ -26,6 +26,11 @@ const timingFrom = (data: FormData) => ({
 const strings = (data: FormData, name: string): string[] =>
   data.getAll(name).filter((v): v is string => typeof v === 'string');
 
+const policyFrom = (data: FormData) => ({
+  biometricFallback: field(data, 'biometricFallback'),
+  geolocation: field(data, 'geolocation'),
+});
+
 const PROGRAM_FIELDS = [
   'name',
   'startDate',
@@ -34,6 +39,8 @@ const PROGRAM_FIELDS = [
   'checkInOpensMinutes',
   'graceMinutes',
   'checkInClosesMinutes',
+  'biometricFallback',
+  'geolocation',
   'reason',
 ];
 
@@ -49,10 +56,12 @@ export async function createProgramAction(_: FormState, data: FormData): Promise
       durationWeeks: num(data, 'durationWeeks'),
       allowedAbsences: num(data, 'allowedAbsences'),
       timing: timingFrom(data),
+      checkInPolicy: policyFrom(data),
     },
   });
   if (!result.ok) return failure(result, echo(data, PROGRAM_FIELDS));
   revalidatePath('/schedule');
+  revalidatePath('/settings');
   return { status: 'success' };
 }
 
@@ -73,7 +82,10 @@ export async function updateProgramPlanAction(_: FormState, data: FormData): Pro
   return { status: 'success' };
 }
 
-/** Attendance defaults (`attendance.settings.defaults`); existing visits keep theirs (§8.1). */
+/**
+ * Attendance defaults (`attendance.settings.defaults`); existing visits keep
+ * their timing (§8.1). The check-in policy applies to every check-in from now on.
+ */
 export async function updateAttendanceDefaultsAction(
   _: FormState,
   data: FormData,
@@ -84,11 +96,13 @@ export async function updateAttendanceDefaultsAction(
     body: {
       allowedAbsences: num(data, 'allowedAbsences'),
       timing: timingFrom(data),
+      checkInPolicy: policyFrom(data),
       reason: optional(data, 'reason'),
     },
   });
   if (!result.ok) return failure(result, echo(data, PROGRAM_FIELDS));
   revalidatePath('/schedule');
+  revalidatePath('/settings');
   return { status: 'success' };
 }
 

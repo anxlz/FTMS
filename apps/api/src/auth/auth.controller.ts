@@ -150,7 +150,7 @@ export class AuthController {
   @AllowPendingVerification()
   @Get('me')
   me(@CurrentPrincipal() principal: AuthPrincipal): Promise<MeResponse> {
-    return this.users.me(principal.userId);
+    return this.users.me(principal.userId, principal.sessionMethod);
   }
 
   /** Sets the first password or changes the current one. */
@@ -174,6 +174,6 @@ export class AuthController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Body(new ZodValidationPipe(UpdatePreferencesRequestSchema)) body: UpdatePreferencesRequest,
   ): Promise<MeResponse> {
-    return this.users.updatePreferences(principal.userId, body);
+    return this.users.updatePreferences(principal.userId, principal.sessionMethod, body);
   }
 }

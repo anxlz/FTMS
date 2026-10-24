@@ -278,6 +278,10 @@ export class StudentsService {
   ): Promise<void> {
     const record = await this.load(id);
     if (record.userId !== null) throw StudentErrors.linkedToAccount();
+    // Attendance history is kept (§16.1 referential integrity): such a record stays.
+    if ((await this.prisma.attendanceRecord.count({ where: { studentId: id } })) > 0) {
+      throw StudentErrors.hasAttendance();
+    }
     const group = record.memberships[0]?.group;
     await this.prisma.$transaction(async (tx) => {
       const deleted = await tx.studentProfile.deleteMany({ where: { id, userId: null } });

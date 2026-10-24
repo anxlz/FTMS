@@ -17,6 +17,7 @@ import { configureApp } from '../../src/app.factory';
 import { AppModule } from '../../src/app.module';
 import { hashPassword } from '../../src/auth/password-hashing';
 import { BackgroundTasks } from '../../src/common/background-tasks.service';
+import { Clock } from '../../src/common/clock';
 import { CLIENT_IP_HEADER, PROXY_KEY_HEADER } from '../../src/common/request-context';
 import { type OutgoingMail, MailService } from '../../src/mail/mail.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -32,8 +33,32 @@ export interface Mailbox {
   clear(): void;
 }
 
-export async function bootTestApp(): Promise<{ app: TestApp; mailbox: Mailbox }> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+/**
+ * The server clock, standing still at a chosen instant (attendance tests), or
+ * following real time when unset. Tokens and sessions always use real time.
+ */
+export class TestClock extends Clock {
+  private fixed: Date | null = null;
+
+  override now(): Date {
+    return this.fixed ? new Date(this.fixed.getTime()) : new Date();
+  }
+
+  set(instant: Date | string): void {
+    this.fixed = new Date(instant);
+  }
+
+  reset(): void {
+    this.fixed = null;
+  }
+}
+
+export async function bootTestApp(
+  options: { clock?: TestClock } = {},
+): Promise<{ app: TestApp; mailbox: Mailbox }> {
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (options.clock) builder.overrideProvider(Clock).useValue(options.clock);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<TestApp>({ logger: false });
   configureApp(app);
   await app.init();
@@ -62,6 +87,9 @@ export async function bootTestApp(): Promise<{ app: TestApp; mailbox: Mailbox }>
 }
 
 const TRUNCATE = [
+  'attendance_records',
+  'webauthn_challenges',
+  'webauthn_credentials',
   'notifications',
   'visit_files',
   'visit_groups',
@@ -234,6 +262,8 @@ export async function createProgram(
     durationWeeks?: number;
     timing?: { checkInOpensMinutes: number; graceMinutes: number; checkInClosesMinutes: number };
     allowedAbsences?: number;
+    biometricFallback?: 'ALLOW_UNVERIFIED' | 'REQUIRE_BIOMETRIC';
+    geolocationPolicy?: 'REQUIRED' | 'OPTIONAL';
   } = {},
 ): Promise<{ id: string; startDate: LocalDate }> {
   const startDate = options.startDate ?? cairoDate(-14);
@@ -243,6 +273,8 @@ export async function createProgram(
       startDate: new Date(`${startDate}T00:00:00Z`),
       durationWeeks: options.durationWeeks ?? 26,
       allowedAbsences: options.allowedAbsences ?? 2,
+      biometricFallback: options.biometricFallback ?? 'ALLOW_UNVERIFIED',
+      geolocationPolicy: options.geolocationPolicy ?? 'REQUIRED',
       ...(options.timing ?? {
         checkInOpensMinutes: 15,
         graceMinutes: 15,
@@ -263,8 +295,10 @@ export async function createVisit(
     startTime?: LocalTime;
     title?: string;
     status?: 'SCHEDULED' | 'CANCELLED';
+    timing?: { checkInOpensMinutes: number; graceMinutes: number; checkInClosesMinutes: number };
+    coordinates?: { latitude: number; longitude: number };
   } = {},
-): Promise<{ id: string; date: LocalDate }> {
+): Promise<{ id: string; date: LocalDate; startsAt: Date }> {
   const date = options.date ?? cairoDate(7);
   const startTime = options.startTime ?? '10:00';
   const cancelled = options.status === 'CANCELLED';
@@ -275,16 +309,19 @@ export async function createVisit(
       date: new Date(`${date}T00:00:00Z`),
       startTime: new Date(`1970-01-01T${startTime}:00Z`),
       startsAt: zonedToUtc(date, startTime, PROGRAM_TIME_ZONE),
-      checkInOpensMinutes: 15,
-      graceMinutes: 15,
-      checkInClosesMinutes: 60,
+      ...(options.timing ?? {
+        checkInOpensMinutes: 15,
+        graceMinutes: 15,
+        checkInClosesMinutes: 60,
+      }),
+      ...(options.coordinates ?? {}),
       ...(cancelled
         ? { status: 'CANCELLED', cancelReason: 'Weather', cancelledAt: new Date() }
         : {}),
       groups: { createMany: { data: groupIds.map((groupId) => ({ groupId })) } },
     },
   });
-  return { id: visit.id, date };
+  return { id: visit.id, date, startsAt: visit.startsAt };
 }
 
 /** The record id linked to an account. */

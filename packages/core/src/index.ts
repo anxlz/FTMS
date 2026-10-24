@@ -1,3 +1,6 @@
+export * from './attendance/classification';
+export * from './attendance/contracts';
+export * from './attendance/policy';
 export * from './auth/contracts';
 export * from './auth/identity';
 export * from './auth/password-policy';

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   addDays,
+  type AttendanceOverview,
   type CalendarResponse,
   type Group,
   type ListProfileChangesResponse,
@@ -9,6 +10,7 @@ import {
   type ListUsersResponse,
   type ListVerificationsResponse,
   type MeResponse,
+  type OwnAttendanceResponse,
   type OwnStudentProfile,
   PROGRAM_TIME_ZONE,
   ROLES,
@@ -33,8 +35,8 @@ export default async function DashboardPage() {
   const has = (p: MeResponse['permissions'][number]) => user.permissions.includes(p);
   const format = await getFormatter();
   const today = todayIn(PROGRAM_TIME_ZONE);
-  // Real data only — attendance summaries arrive with Phase 4.
-  const [counts, records, own, upcoming] = await Promise.all([
+  // Real data only: every figure comes from the API.
+  const [counts, records, own, upcoming, attendance, overview] = await Promise.all([
     has('users.read') ? accountCounts(token) : null,
     has('students.read')
       ? studentCounts(token, has('profile_changes.decide'), has('students.manage'))
@@ -46,7 +48,15 @@ export default async function DashboardPage() {
       `/calendar?from=${today}&to=${addDays(today, UPCOMING_DAYS)}&status=SCHEDULED`,
       { accessToken: token },
     ),
+    user.role === 'STUDENT'
+      ? apiFetch<OwnAttendanceResponse>('/me/attendance', { accessToken: token })
+      : null,
+    has('attendance.read')
+      ? apiFetch<AttendanceOverview>('/attendance/overview', { accessToken: token })
+      : null,
   ]);
+  const summary = attendance?.ok ? attendance.data.summary : null;
+  const totals = overview?.ok ? overview.data : null;
   const nextVisits = upcoming.ok
     ? upcoming.data.visits.filter((v) => v.phase !== 'FINISHED').slice(0, 5)
     : [];
@@ -84,6 +94,76 @@ export default async function DashboardPage() {
           </div>
         </dl>
       </section>
+
+      {summary && (
+        <section className="card stack" aria-labelledby="attendance-title">
+          <div className="row-between">
+            <h2 id="attendance-title">{t('dashboard.attendanceTitle')}</h2>
+            <Link href="/attendance">{t('dashboard.openAttendance')}</Link>
+          </div>
+          <ul className="stat-grid">
+            <li className="stat">
+              <span className="stat-value">{summary.attended}</span>
+              <span className="stat-label">{t('attendance.attended')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{summary.present}</span>
+              <span className="stat-label">{t('attendance.presentCount')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{summary.late}</span>
+              <span className="stat-label">{t('attendance.lateCount')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{summary.absent}</span>
+              <span className="stat-label">{t('attendance.absentCount')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">
+                {summary.remainingAbsences}
+                <span className="stat-of"> / {summary.allowedAbsences}</span>
+              </span>
+              <span className="stat-label">{t('attendance.remainingAbsences')}</span>
+            </li>
+          </ul>
+          {summary.absent > summary.allowedAbsences && (
+            <p className="alert alert-error">{t('attendance.overAllowance')}</p>
+          )}
+        </section>
+      )}
+
+      {totals && (
+        <section className="card stack" aria-labelledby="overview-title">
+          <div className="row-between">
+            <h2 id="overview-title">{t('dashboard.overviewTitle')}</h2>
+            <Link href="/attendance">{t('dashboard.openAttendance')}</Link>
+          </div>
+          <ul className="stat-grid">
+            <li className="stat">
+              <span className="stat-value">{totals.visits.completed}</span>
+              <span className="stat-label">
+                {t('attendance.completedOf', { total: totals.visits.total })}
+              </span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{totals.visits.nextSevenDays}</span>
+              <span className="stat-label">{t('attendance.nextSevenDays')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{totals.records.present}</span>
+              <span className="stat-label">{t('attendance.presentCount')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{totals.records.late}</span>
+              <span className="stat-label">{t('attendance.lateCount')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{totals.records.absent}</span>
+              <span className="stat-label">{t('attendance.absentCount')}</span>
+            </li>
+          </ul>
+        </section>
+      )}
 
       {upcoming.ok && (
         <section className="card stack" aria-labelledby="upcoming-title">

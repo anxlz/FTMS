@@ -4,6 +4,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { UsersService } from '../users/users.service';
 import { AuthController } from './auth.controller';
+import { BiometricsController } from './biometrics/biometrics.controller';
+import { BiometricsService } from './biometrics/biometrics.service';
+import { WebAuthnChallenges, WebAuthnSettings } from './biometrics/webauthn';
 import { AuthService } from './auth.service';
 import { ChallengeService } from './challenge.service';
 import {
@@ -24,9 +27,12 @@ import { TokenService } from './token.service';
 @Module({
   // Secrets are passed per call (separate access/refresh secrets), so none is registered here.
   imports: [PassportModule, JwtModule.register({})],
-  controllers: [AuthController],
+  controllers: [AuthController, BiometricsController],
   providers: [
     AuthService,
+    BiometricsService,
+    WebAuthnChallenges,
+    WebAuthnSettings,
     ChallengeService,
     PrincipalService,
     SessionService,
@@ -43,6 +49,13 @@ import { TokenService } from './token.service';
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
-  exports: [UsersService, SessionService, StudentLinkingService],
+  exports: [
+    UsersService,
+    SessionService,
+    StudentLinkingService,
+    BiometricsService,
+    WebAuthnChallenges,
+    WebAuthnSettings,
+  ],
 })
 export class AuthModule {}

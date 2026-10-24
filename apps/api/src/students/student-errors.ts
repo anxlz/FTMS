@@ -38,6 +38,12 @@ export const StudentErrors = {
   groupNotEmpty: () =>
     new ApiException(409, 'GROUP_NOT_EMPTY', 'Remove every member before archiving the group'),
   noChanges: () => new ApiException(409, 'NO_CHANGES', 'Nothing would change'),
+  hasAttendance: () =>
+    new ApiException(
+      409,
+      'STUDENT_HAS_ATTENDANCE',
+      'The student has attendance records; the record is kept for the history',
+    ),
   profileChangePending: () =>
     new ApiException(
       409,

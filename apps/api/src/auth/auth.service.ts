@@ -158,6 +158,7 @@ export class AuthService {
     method: AuthMethod,
     context: RequestContext,
     extra: Record<string, unknown> = {},
+    session: { webauthnCredentialId?: string } = {},
   ): Promise<AuthResponse> {
     const now = new Date();
     // No `include` inside the transaction: Prisma 7 would run relation queries
@@ -172,7 +173,7 @@ export class AuthService {
             : {}),
         },
       });
-      const tokens = await this.sessions.create(user, method, context, tx);
+      const tokens = await this.sessions.create(user, method, context, tx, session);
       await this.audit.record(
         {
           actor: actorOfUser(user),
@@ -192,7 +193,7 @@ export class AuthService {
       include: USER_INCLUDE,
     });
     const { sessionId: _sessionId, ...pair } = tokens;
-    return { ...pair, user: toMe(fresh) };
+    return { ...pair, user: toMe(fresh, method) };
   }
 
   /* ─────────────────────────── emailed one-time codes ─────────────────────────── */
@@ -710,8 +711,8 @@ export class AuthService {
   async refresh(refreshToken: string, context: RequestContext): Promise<AuthResponse> {
     const claims = await this.tokens.verifyRefresh(refreshToken);
     if (!claims) throw Errors.sessionInvalid();
-    const { user, tokens } = await this.sessions.rotate(claims, context);
-    return { ...tokens, user: toMe(user) };
+    const { user, tokens, method } = await this.sessions.rotate(claims, context);
+    return { ...tokens, user: toMe(user, method) };
   }
 
   async logout(principal: AuthPrincipal, context: RequestContext): Promise<void> {

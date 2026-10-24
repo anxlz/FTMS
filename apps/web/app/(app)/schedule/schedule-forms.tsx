@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  BIOMETRIC_FALLBACKS,
+  type CheckInPolicy,
+  GEOLOCATION_POLICIES,
   type GroupRef,
   type Program,
   type Schedule,
@@ -67,6 +70,31 @@ function TimingFields({ state, timing }: { state: FormState; timing: VisitTiming
   );
 }
 
+/** §7.2 fallback for students without biometrics, and the location rule for it. */
+function PolicyFields({ state, policy }: { state: FormState; policy: CheckInPolicy }) {
+  const t = useTranslations('schedule.policy');
+  return (
+    <fieldset className="plain-fieldset stack">
+      <legend>{t('title')}</legend>
+      <p className="muted small">{t('intro')}</p>
+      <SelectField
+        label={t('biometricFallback')}
+        name="biometricFallback"
+        defaultValue={val(state, 'biometricFallback', policy.biometricFallback)}
+        options={BIOMETRIC_FALLBACKS.map((v) => ({ value: v, label: t(`fallback.${v}`) }))}
+        errors={state.fieldErrors?.biometricFallback}
+      />
+      <SelectField
+        label={t('geolocation')}
+        name="geolocation"
+        defaultValue={val(state, 'geolocation', policy.geolocation)}
+        options={GEOLOCATION_POLICIES.map((v) => ({ value: v, label: t(`location.${v}`) }))}
+        errors={state.fieldErrors?.geolocation}
+      />
+    </fieldset>
+  );
+}
+
 function PlanFields({ state, program }: { state: FormState; program?: Program }) {
   const t = useTranslations('schedule.fields');
   return (
@@ -122,6 +150,7 @@ export function CreateProgramForm() {
         errors={state.fieldErrors?.allowedAbsences}
       />
       <TimingFields state={state} timing={SUGGESTED_PROGRAM_SETTINGS.timing} />
+      <PolicyFields state={state} policy={SUGGESTED_PROGRAM_SETTINGS.checkInPolicy} />
       <SubmitButton>{t('program.create')}</SubmitButton>
     </form>
   );
@@ -160,6 +189,7 @@ export function AttendanceDefaultsForm({ program }: { program: Program }) {
       />
       <TimingFields state={state} timing={program.timing} />
       <p className="alert alert-info">{t('program.defaultsHint')}</p>
+      <PolicyFields state={state} policy={program.checkInPolicy} />
       <Field label={t('fields.reason')} name="reason" defaultValue={val(state, 'reason', '')} />
       <SubmitButton variant="secondary">{t('save')}</SubmitButton>
     </form>

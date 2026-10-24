@@ -26,6 +26,9 @@ export const LIMITS = {
   codeFailuresPerEmail: { limit: 10, windowSeconds: 15 * 60 },
   codeFailuresPerIp: { limit: 50, windowSeconds: 15 * 60 },
   passwordChangeFailuresPerUser: { limit: 10, windowSeconds: 15 * 60 },
+  biometricOptionsPerIp: { limit: 60, windowSeconds: 15 * 60 },
+  biometricFailuresPerIp: { limit: 30, windowSeconds: 15 * 60 },
+  checkInAttemptsPerUser: { limit: 20, windowSeconds: 10 * 60 },
 } as const;
 
 export type LimitPolicy = (typeof LIMITS)[keyof typeof LIMITS];

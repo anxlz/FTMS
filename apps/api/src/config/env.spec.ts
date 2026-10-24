@@ -19,6 +19,7 @@ const fullProduction = {
   SMTP_PASS: 'abcd efgh ijkl mnop',
   QR_HMAC_SECRET: 'c'.repeat(48),
   BFF_SHARED_SECRET: 'd'.repeat(48),
+  CRON_SECRET: 'e'.repeat(48),
   WEB_APP_URL: 'https://ftms.example.edu.eg',
 };
 

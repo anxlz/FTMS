@@ -102,6 +102,32 @@ export async function notificationTexts(items: Notification[]): Promise<Notifica
         };
       case 'profile_change.rejected':
         return { title: t('profileChangeRejected'), body: reason(d) };
+      case 'attendance.absent':
+        return { title: t('attendanceAbsent', { title }), body: day(d.date) };
+      case 'attendance.corrected': {
+        const minutes = typeof d.minutesLate === 'number' ? d.minutesLate : 0;
+        const status = ['PRESENT', 'LATE', 'ABSENT'].includes(str(d.status)) ? str(d.status) : '';
+        return {
+          title: t('attendanceCorrected', { title }),
+          body: join(
+            day(d.date),
+            status ? t(`attendanceStatus.${status}`, { minutes }) : '',
+            reason(d),
+          ),
+        };
+      }
+      case 'security.biometric_enabled':
+        return {
+          title: t('biometricEnabled'),
+          body: t('biometricEnabledBody', { device: str(d.deviceName) }),
+        };
+      case 'security.biometric_revoked':
+        return {
+          title: t('biometricRevoked'),
+          body: t('biometricRevokedBody', { device: str(d.deviceName) }),
+        };
+      default:
+        return { title: type, body: '' };
     }
   });
 }

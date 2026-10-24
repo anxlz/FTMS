@@ -32,6 +32,7 @@ export const toProgram = (p: TrainingProgram): Program => {
     timeZone: p.timeZone,
     timing: timingOf(p),
     allowedAbsences: p.allowedAbsences,
+    checkInPolicy: { biometricFallback: p.biometricFallback, geolocation: p.geolocationPolicy },
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
@@ -46,11 +47,12 @@ const snapshot = (p: TrainingProgram) => {
     durationWeeks: program.durationWeeks,
     allowedAbsences: program.allowedAbsences,
     timing: program.timing,
+    checkInPolicy: program.checkInPolicy,
   };
 };
 
 const SCHEDULE_FIELDS = ['name', 'startDate', 'durationWeeks'] as const;
-const ATTENDANCE_FIELDS = ['allowedAbsences', 'timing'] as const;
+const ATTENDANCE_FIELDS = ['allowedAbsences', 'timing', 'checkInPolicy'] as const;
 
 /**
  * Training program settings (§6.1, §8.1, §11). Schedule fields need
@@ -101,6 +103,12 @@ export class ProgramService {
             timeZone: PROGRAM_TIME_ZONE,
             allowedAbsences: input.allowedAbsences,
             ...input.timing,
+            ...(input.checkInPolicy
+              ? {
+                  biometricFallback: input.checkInPolicy.biometricFallback,
+                  geolocationPolicy: input.checkInPolicy.geolocation,
+                }
+              : {}),
             createdById: principal.userId,
           },
         });
@@ -150,6 +158,8 @@ export class ProgramService {
         durationWeeks: input.durationWeeks,
         allowedAbsences: input.allowedAbsences,
         ...(input.timing ?? {}),
+        biometricFallback: input.checkInPolicy?.biometricFallback,
+        geolocationPolicy: input.checkInPolicy?.geolocation,
       };
       const updated = await tx.trainingProgram.update({ where: { id: current.id }, data });
 

@@ -120,6 +120,7 @@ export async function apiUpload<T>(
 export async function apiDownload(
   path: string,
   accessToken: string | null,
+  timeoutMs = 30_000,
 ): Promise<Response | null> {
   const base = apiBaseUrl();
   if (!base) return null;
@@ -127,7 +128,7 @@ export async function apiDownload(
     return await fetch(`${base}${path}`, {
       headers: await forwardingHeaders(accessToken),
       cache: 'no-store',
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return null;

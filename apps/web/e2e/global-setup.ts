@@ -9,6 +9,9 @@ const apiDir = path.join(here, '..', '..', 'api');
 const stateDir = path.join(here, '..', '.e2e');
 
 const TABLES = [
+  'attendance_records',
+  'webauthn_challenges',
+  'webauthn_credentials',
   'notifications',
   'visit_files',
   'visit_groups',

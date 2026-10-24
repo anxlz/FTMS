@@ -3,13 +3,15 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 3 — training program settings, recurring schedules, days off, visits
-> for one or several groups, calendars and in-app notifications** (on top of Phase 2:
-> student records, import, account linking, groups; Phase 1: identity, authentication,
-> roles and permissions, i18n). The master prompt (`docs/master-prompt.md`) is the source
-> of truth; each phase is implemented separately. Checkpoints:
-> [`phase-0`](docs/checkpoints/phase-0.md), [`phase-1`](docs/checkpoints/phase-1.md),
-> [`phase-2`](docs/checkpoints/phase-2.md), [`phase-3`](docs/checkpoints/phase-3.md) — what
+> **Status: Phase 4 — QR codes, check-in with biometrics and location, automatic
+> lateness and absences, faculty corrections, attendance dashboards and PDF/XLSX/CSV
+> exports** (on top of Phase 3: program settings, schedules, visits, calendars,
+> notifications; Phase 2: student records, import, account linking, groups; Phase 1:
+> identity, authentication, roles and permissions, i18n). The master prompt
+> (`docs/master-prompt.md`) is the source of truth; each phase is implemented separately.
+> Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
+> [`phase-1`](docs/checkpoints/phase-1.md), [`phase-2`](docs/checkpoints/phase-2.md),
+> [`phase-3`](docs/checkpoints/phase-3.md), [`phase-4`](docs/checkpoints/phase-4.md) — what
 > each delivered, what was verified, and what is still open.
 
 ## Stack
@@ -84,22 +86,23 @@ A plain local Postgres works too: set only `DATABASE_URL`.
 
 ## Commands
 
-| Command                               | What it does                                                  |
-| ------------------------------------- | ------------------------------------------------------------- |
-| `pnpm dev`                            | Run API and web in watch mode                                 |
-| `pnpm build`                          | Build every package (generates the Prisma client first)       |
-| `pnpm lint` / `pnpm typecheck`        | ESLint (type-aware) / TypeScript across the monorepo          |
-| `pnpm test`                           | Unit tests (no network, no database)                          |
-| `pnpm test:e2e`                       | API + browser end-to-end tests on a real Postgres (see below) |
-| `pnpm verify`                         | lint + typecheck + build + test, as CI runs them              |
-| `pnpm format` / `pnpm format:check`   | Prettier                                                      |
-| `pnpm db:generate`                    | Generate the Prisma client                                    |
-| `pnpm db:migrate`                     | Create + apply a migration in development                     |
-| `pnpm db:deploy`                      | Apply pending migrations (CI / production)                    |
-| `pnpm db:seed`                        | Create the first Super Admin (`-- --reset-password` recovers) |
-| `pnpm storage:provision`              | Create/repair private storage buckets (idempotent)            |
-| `pnpm --filter @ftms/api mail:verify` | Real Gmail SMTP handshake + login, sends nothing              |
-| `pnpm icons`                          | Regenerate every icon from the official logo                  |
+| Command                                | What it does                                                  |
+| -------------------------------------- | ------------------------------------------------------------- |
+| `pnpm dev`                             | Run API and web in watch mode                                 |
+| `pnpm build`                           | Build every package (generates the Prisma client first)       |
+| `pnpm lint` / `pnpm typecheck`         | ESLint (type-aware) / TypeScript across the monorepo          |
+| `pnpm test`                            | Unit tests (no network, no database)                          |
+| `pnpm test:e2e`                        | API + browser end-to-end tests on a real Postgres (see below) |
+| `pnpm verify`                          | lint + typecheck + build + test, as CI runs them              |
+| `pnpm format` / `pnpm format:check`    | Prettier                                                      |
+| `pnpm db:generate`                     | Generate the Prisma client                                    |
+| `pnpm db:migrate`                      | Create + apply a migration in development                     |
+| `pnpm db:deploy`                       | Apply pending migrations (CI / production)                    |
+| `pnpm db:seed`                         | Create the first Super Admin (`-- --reset-password` recovers) |
+| `pnpm storage:provision`               | Create/repair private storage buckets (idempotent)            |
+| `pnpm --filter @ftms/api cron:install` | Schedule automatic absences with `pg_cron` (see below)        |
+| `pnpm --filter @ftms/api mail:verify`  | Real Gmail SMTP handshake + login, sends nothing              |
+| `pnpm icons`                           | Regenerate every icon from the official logo                  |
 
 ## Health endpoints
 
@@ -200,7 +203,9 @@ with `NODE_ENV=production`.
 
 After the first deploy: run `pnpm db:deploy` against production (`DIRECT_URL`), then
 `pnpm db:seed` (from a trusted terminal — it prints the one-time password), then
-`pnpm storage:provision`, then check `GET /health/ready` returns `ready`.
+`pnpm storage:provision`, then `pnpm --filter @ftms/api cron:install -- --api-url=https://<api
+host>` (automatic absences), then check `GET /health/ready` returns `ready`. The API's
+`vercel.json` ships `assets/` (the report fonts) with the function.
 
 ## Running the tests
 
@@ -220,9 +225,11 @@ script, and drives in Chromium the sign-in, forced password change, email-code a
 language flows, the spreadsheet import, first sign-in of an imported student, signup (both
 matched and reviewed), profile corrections and group moves, program settings, a visit for
 two of three groups (the third sees and receives nothing), document links, cancellation,
-a weekly schedule and a day off; it reads emailed codes from the API's log (no SMTP in
-tests). The two suites run
-one after the other because they share the database.
+a weekly schedule and a day off, and — with Chromium's virtual platform authenticator and
+a fixed geolocation — biometric enrollment and sign-in, a scanned check-in link that goes
+through sign-in, a confirmed check-in, faculty corrections and a report download; it reads
+emailed codes from the API's log (no SMTP in tests). The two suites run one after the
+other because they share the database.
 
 ## Authentication and access
 
@@ -304,6 +311,68 @@ one after the other because they share the database.
   language; unread count in the header, mark one or all as read. Each is unique per
   recipient and event, so retries never duplicate. They also cover account-verification
   and profile-correction decisions (Phase 2), alongside the emails.
+
+## Attendance (Phase 4)
+
+- **QR codes (§7).** Each visit has a details code (opens `/visits/<id>`, sign-in
+  required) and an attendance code (`/check-in/<token>`). The token is the visit id plus
+  an HMAC-SHA256 tag (`QR_HMAC_SECRET`): stable for the whole visit, so one printout
+  serves every session, impossible to forge for another visit, and free of personal data.
+  Staff print both from `/visits/<id>/qr`. The code grants nothing by itself.
+- **Check-in (§7.2, §8.5).** A scanned link sends a signed-out student through sign-in and
+  back. The API then checks, in order: a valid token; an active, verified student; of one
+  of the visit's groups; a visit that is not cancelled; no existing record; the server
+  time inside the window; the location reading; a fresh biometric assertion bound to this
+  student **and this visit** (a sign-in session never counts). Only then is one record
+  created; the database's unique key turns a concurrent duplicate into "already recorded".
+  Values sent by the browser (status, minutes, flags) are ignored. Check-ins are
+  rate-limited per student.
+- **Biometrics and location.** A student with biometric sign-in enabled always confirms
+  with it and sends the device location. For students without it, the Training Director
+  chooses the fallback (`/settings`): allow the check-in, marked "not confirmed with
+  biometrics", or refuse it until biometrics are enabled; and whether the location is
+  required. Coordinates and accuracy are stored with the record (and the distance from
+  the visit's coordinates when known) for faculty review only; they are supporting
+  context, not proof of presence. The audit log notes that a reading was sent, not where.
+- **Classification (§8.2).** Minutes are whole minutes since the start, rounded down:
+  `m = floor((check-in − start) / 1 min)`. Present when `−opens ≤ m ≤ grace`; Late when
+  `grace < m ≤ closes`, with `m − grace` minutes late; refused otherwise. For a 10:00
+  visit with 15/15/60: 09:44:59 refused, 09:45 present, 10:15:59 present, 10:16 late 1,
+  11:00:59 late 45, 11:01 closed. Every visit keeps the timing it was created with.
+- **Automatic absences (§8.3).** When a visit's window closes, every current member of its
+  groups without a record gets an ABSENT record. Records are only ever inserted (`ON
+CONFLICT DO NOTHING` on the one-record-per-student key), so repeated or overlapping runs
+  add nothing and never overwrite a check-in or a correction; cancelled visits are
+  skipped; rescheduled visits close at their new time. It runs from Supabase `pg_cron`
+  every 5 minutes through `pg_net`, calling `POST /internal/attendance/process-absences`
+  with the `x-ftms-cron-key: CRON_SECRET` header (`cron:install` stores the secret in
+  Supabase Vault — never in the job text). The attendance pages, dashboards and exports
+  also finalize a closed visit themselves, so figures never wait for the scheduler.
+- **Corrections (§8.4).** Holders of `attendance.correct` set Present / Late (minutes) /
+  Absent with an optional reason, once check-in has opened. The record becomes a manual
+  correction with who and when; the audit log keeps every previous state; the student is
+  notified and sees the reason but not who corrected it.
+- **Dashboards (§9, §10).** Students see their totals, remaining permitted absences (from
+  the program setting) and history at `/attendance`; staff see training-wide and
+  per-group figures there, and per visit at `/visits/<id>/attendance` (filters, location,
+  corrections).
+- **Exports (§10.4, §19).** CSV (UTF-8 with BOM, formula-safe), XLSX (right-to-left for
+  Arabic, frozen header, filters) and PDF (IBM Plex Sans Arabic, landscape, right-to-left
+  for Arabic) from one query, so files match the screens. Filters: visit, dates, group,
+  student, status; at most 10,000 rows (3,000 for PDF). Needs `attendance.read` and
+  `reports.export`; each export is audited.
+
+## Biometric sign-in (§4.5)
+
+Platform passkeys (WebAuthn) with user verification: the phone or laptop checks the
+fingerprint or face; the server stores only the credential's public key and counter.
+Students and staff enable it from `/profile` after a password or email-code sign-in (a
+biometric session cannot enroll another device), name each device, and remove it there —
+removal takes effect at once and ends the sessions that device opened. Sign-in is
+usernameless ("Sign in with fingerprint or face"), so it reveals no account. Password and
+email-code sign-in always remain. The relying party is the web app's host
+(`WEB_APP_URL`, or `WEBAUTHN_RP_ID` for a parent domain); browsers require HTTPS outside
+`localhost`.
 
 ## Languages
 

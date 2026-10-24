@@ -5,6 +5,8 @@
 // imports, account-verification and profile-change requests.
 // Phase 3: training program settings, recurring schedules and exceptions,
 // visits with their groups and files, in-app notifications.
+// Phase 4: attendance records, biometric (WebAuthn) credentials and challenges,
+// check-in policy, absence processing.
 // Later feature entities (visits, attendance, tickets, swaps, …) arrive with the
 // phase that implements them, each through its own migration.
 //
@@ -92,6 +94,11 @@ model User {
   visitFiles        VisitFile[]         @relation("VisitFileUploadedBy")
   notifications     Notification[]      @relation("NotificationRecipient")
 
+  webauthnCredentials WebAuthnCredential[] @relation("CredentialOwner")
+  credentialsRevoked  WebAuthnCredential[] @relation("CredentialRevokedBy")
+  webauthnChallenges  WebAuthnChallenge[]
+  attendanceCorrected AttendanceRecord[]   @relation("AttendanceCorrectedBy")
+
   @@index([role, status])
   @@map("users")
 }
@@ -126,6 +133,7 @@ model StudentProfile {
   memberships         GroupMembership[]
   profileChanges      ProfileChangeRequest[]
   verificationsLinked StudentVerificationRequest[]
+  attendance          AttendanceRecord[]
 
   @@index([fullName])
   @@index([nameKey])
@@ -182,29 +190,35 @@ model UserPermissionGrant {
 enum AuthMethod {
   PASSWORD
   EMAIL_CODE
+  /// WebAuthn assertion from a registered platform authenticator (§4.5).
+  BIOMETRIC
 }
 
 /// A signed-in device. Refresh tokens rotate on every use; only hashes are stored.
 model AuthSession {
-  id                  String     @id @default(uuid(7)) @db.Uuid
-  userId              String     @map("user_id") @db.Uuid
-  method              AuthMethod
+  id                   String     @id @default(uuid(7)) @db.Uuid
+  userId               String     @map("user_id") @db.Uuid
+  method               AuthMethod
   /// SHA-256 of the current refresh token id.
-  currentRefreshHash  String     @map("current_refresh_hash") @db.Char(64)
+  currentRefreshHash   String     @map("current_refresh_hash") @db.Char(64)
   /// SHA-256 of the previous refresh token id, accepted briefly after a rotation.
-  previousRefreshHash String?    @map("previous_refresh_hash") @db.Char(64)
-  rotatedAt           DateTime?  @map("rotated_at") @db.Timestamptz(3)
-  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  lastUsedAt          DateTime   @default(now()) @map("last_used_at") @db.Timestamptz(3)
-  expiresAt           DateTime   @map("expires_at") @db.Timestamptz(3)
-  revokedAt           DateTime?  @map("revoked_at") @db.Timestamptz(3)
-  revokeReason        String?    @map("revoke_reason") @db.VarChar(64)
-  ip                  String?    @db.VarChar(64)
-  userAgent           String?    @map("user_agent") @db.VarChar(512)
+  previousRefreshHash  String?    @map("previous_refresh_hash") @db.Char(64)
+  rotatedAt            DateTime?  @map("rotated_at") @db.Timestamptz(3)
+  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt           DateTime   @default(now()) @map("last_used_at") @db.Timestamptz(3)
+  expiresAt            DateTime   @map("expires_at") @db.Timestamptz(3)
+  revokedAt            DateTime?  @map("revoked_at") @db.Timestamptz(3)
+  revokeReason         String?    @map("revoke_reason") @db.VarChar(64)
+  ip                   String?    @db.VarChar(64)
+  userAgent            String?    @map("user_agent") @db.VarChar(512)
+  /// The biometric credential that opened the session; revoking it ends the session.
+  webauthnCredentialId String?    @map("webauthn_credential_id") @db.Uuid
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  webauthnCredential WebAuthnCredential? @relation(fields: [webauthnCredentialId], references: [id], onDelete: SetNull)
 
   @@index([userId, revokedAt])
+  @@index([webauthnCredentialId])
   @@map("auth_sessions")
 }
 
@@ -286,10 +300,11 @@ model TrainingGroup {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  createdBy      User?             @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy      User?              @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   memberships    GroupMembership[]
   scheduleGroups ScheduleGroup[]
   visitGroups    VisitGroup[]
+  attendance     AttendanceRecord[]
 
   @@map("training_groups")
 }
@@ -439,20 +454,23 @@ model ProfileChangeRequest {
 /// only pre-filled by the settings form — every value here is configurable.
 /// Timing values are copied into each visit when it is created (§8.1).
 model TrainingProgram {
-  id                   String   @id @default(uuid(7)) @db.Uuid
-  name                 String   @db.VarChar(200)
-  startDate            DateTime @map("start_date") @db.Date
-  durationWeeks        Int      @map("duration_weeks")
+  id                   String            @id @default(uuid(7)) @db.Uuid
+  name                 String            @db.VarChar(200)
+  startDate            DateTime          @map("start_date") @db.Date
+  durationWeeks        Int               @map("duration_weeks")
   /// IANA zone of every wall-clock date/time in the program (§16.2).
-  timeZone             String   @default("Africa/Cairo") @map("time_zone") @db.VarChar(64)
-  checkInOpensMinutes  Int      @map("check_in_opens_minutes")
-  graceMinutes         Int      @map("grace_minutes")
-  checkInClosesMinutes Int      @map("check_in_closes_minutes")
-  allowedAbsences      Int      @map("allowed_absences")
-  isCurrent            Boolean  @default(true) @map("is_current")
-  createdById          String?  @map("created_by_id") @db.Uuid
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  timeZone             String            @default("Africa/Cairo") @map("time_zone") @db.VarChar(64)
+  checkInOpensMinutes  Int               @map("check_in_opens_minutes")
+  graceMinutes         Int               @map("grace_minutes")
+  checkInClosesMinutes Int               @map("check_in_closes_minutes")
+  allowedAbsences      Int               @map("allowed_absences")
+  /// §7.2 fallback for students without an enrolled biometric credential.
+  biometricFallback    BiometricFallback @default(ALLOW_UNVERIFIED) @map("biometric_fallback")
+  geolocationPolicy    GeolocationPolicy @default(REQUIRED) @map("geolocation_policy")
+  isCurrent            Boolean           @default(true) @map("is_current")
+  createdById          String?           @map("created_by_id") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   createdBy  User?               @relation("ProgramCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   schedules  TrainingSchedule[]
@@ -565,17 +583,21 @@ model TrainingVisit {
   cancelledByExceptionId String?     @map("cancelled_by_exception_id") @db.Uuid
   createdById            String?     @map("created_by_id") @db.Uuid
   updatedById            String?     @map("updated_by_id") @db.Uuid
+  /// Absences were recorded for students without a check-in (§8.3).
+  absencesProcessedAt    DateTime?   @map("absences_processed_at") @db.Timestamptz(3)
   createdAt              DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  program              TrainingProgram    @relation(fields: [programId], references: [id], onDelete: Restrict)
-  schedule             TrainingSchedule?  @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
-  cancelledByException ScheduleException? @relation(fields: [cancelledByExceptionId], references: [id], onDelete: SetNull)
-  createdBy            User?              @relation("VisitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy            User?              @relation("VisitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  cancelledBy          User?              @relation("VisitCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  program              TrainingProgram     @relation(fields: [programId], references: [id], onDelete: Restrict)
+  schedule             TrainingSchedule?   @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  cancelledByException ScheduleException?  @relation(fields: [cancelledByExceptionId], references: [id], onDelete: SetNull)
+  createdBy            User?               @relation("VisitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy            User?               @relation("VisitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cancelledBy          User?               @relation("VisitCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   groups               VisitGroup[]
   files                VisitFile[]
+  attendance           AttendanceRecord[]
+  webauthnChallenges   WebAuthnChallenge[]
 
   @@unique([scheduleId, occurrenceDate])
   @@index([startsAt])
@@ -641,4 +663,125 @@ model Notification {
   @@unique([recipientId, dedupeKey])
   @@index([recipientId, createdAt])
   @@map("notifications")
+}
+
+/**
+ * ═══════════════════════════ Phase 4 ═══════════════════════════
+ */
+
+enum BiometricFallback {
+  /// Students without a credential may check in; the record is marked unconfirmed.
+  ALLOW_UNVERIFIED
+  /// Students must enable biometric sign-in before they can check in.
+  REQUIRE_BIOMETRIC
+}
+
+enum GeolocationPolicy {
+  REQUIRED
+  OPTIONAL
+}
+
+/// A registered platform authenticator (passkey) of one account (§4.5). Only the
+/// public key is stored — never biometric data. Owner, credential id and key are
+/// immutable (trigger): a credential belongs to the account that enrolled it (§16.1).
+model WebAuthnCredential {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  /// base64url credential id from the authenticator.
+  credentialId String    @unique @map("credential_id") @db.VarChar(1024)
+  /// COSE public key.
+  publicKey    Bytes     @map("public_key")
+  signCount    BigInt    @default(0) @map("sign_count")
+  transports   String[]
+  multiDevice  Boolean   @map("multi_device")
+  backedUp     Boolean   @map("backed_up")
+  aaguid       String?   @db.VarChar(36)
+  name         String    @db.VarChar(100)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedById  String?   @map("revoked_by_id") @db.Uuid
+  revokeReason String?   @map("revoke_reason") @db.VarChar(500)
+
+  user       User               @relation("CredentialOwner", fields: [userId], references: [id], onDelete: Cascade)
+  revokedBy  User?              @relation("CredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  sessions   AuthSession[]
+  attendance AttendanceRecord[]
+
+  @@index([userId, revokedAt])
+  @@map("webauthn_credentials")
+}
+
+enum WebAuthnPurpose {
+  REGISTRATION
+  AUTHENTICATION
+  CHECK_IN
+}
+
+/// A single-use WebAuthn challenge (5 minutes). A check-in challenge is bound to
+/// one account and one visit, so an assertion cannot be replayed elsewhere.
+model WebAuthnChallenge {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  purpose    WebAuthnPurpose
+  challenge  String          @db.VarChar(128)
+  userId     String?         @map("user_id") @db.Uuid
+  visitId    String?         @map("visit_id") @db.Uuid
+  expiresAt  DateTime        @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime?       @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  visit TrainingVisit? @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("webauthn_challenges")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+}
+
+enum AttendanceSource {
+  QR
+  MANUAL
+  AUTOMATIC
+}
+
+/// One effective attendance record per student per visit (§8.5, §16.1). The group
+/// is the one the student attended under and must be one of the visit's groups.
+/// Corrections update the record; the audit log keeps every previous state (§8.4).
+model AttendanceRecord {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  visitId           String           @map("visit_id") @db.Uuid
+  studentId         String           @map("student_id") @db.Uuid
+  groupId           String           @map("group_id") @db.Uuid
+  status            AttendanceStatus
+  /// Whole minutes after the grace period (§8.2); 0 unless LATE.
+  minutesLate       Int              @default(0) @map("minutes_late")
+  checkedInAt       DateTime?        @map("checked_in_at") @db.Timestamptz(3)
+  source            AttendanceSource
+  biometricVerified Boolean          @default(false) @map("biometric_verified")
+  credentialId      String?          @map("credential_id") @db.Uuid
+  latitude          Float?
+  longitude         Float?
+  accuracyMeters    Float?           @map("accuracy_meters")
+  distanceMeters    Int?             @map("distance_meters")
+  correctedById     String?          @map("corrected_by_id") @db.Uuid
+  correctedAt       DateTime?        @map("corrected_at") @db.Timestamptz(3)
+  correctionReason  String?          @map("correction_reason") @db.VarChar(500)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  visit       TrainingVisit       @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  student     StudentProfile      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  group       TrainingGroup       @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  credential  WebAuthnCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  correctedBy User?               @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+
+  @@unique([visitId, studentId])
+  @@index([studentId])
+  @@index([groupId, status])
+  @@map("attendance_records")
 }

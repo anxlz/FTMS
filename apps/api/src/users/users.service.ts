@@ -24,7 +24,7 @@ import { ApiException, Errors } from '../common/api-exception';
 import { BackgroundTasks } from '../common/background-tasks.service';
 import { type RequestContext } from '../common/request-context';
 import { AppConfigService } from '../config/app-config.service';
-import { Prisma } from '../generated/prisma/client';
+import { type AuthMethod, Prisma } from '../generated/prisma/client';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -62,18 +62,22 @@ export class UsersService {
 
   /* ────────────────────────────── self service ────────────────────────────── */
 
-  async me(userId: string): Promise<MeResponse> {
-    return toMe(await this.load(userId));
+  async me(userId: string, sessionMethod: AuthMethod): Promise<MeResponse> {
+    return toMe(await this.load(userId), sessionMethod);
   }
 
-  async updatePreferences(userId: string, input: UpdatePreferencesRequest): Promise<MeResponse> {
+  async updatePreferences(
+    userId: string,
+    sessionMethod: AuthMethod,
+    input: UpdatePreferencesRequest,
+  ): Promise<MeResponse> {
     // A write with `include` runs in an implicit transaction whose relation queries
     // Prisma 7 issues concurrently; write first, then read.
     await this.prisma.user.update({
       where: { id: userId },
       data: { preferredLocale: input.preferredLocale },
     });
-    return this.me(userId);
+    return this.me(userId, sessionMethod);
   }
 
   /* ──────────────────────────── administration ──────────────────────────── */
