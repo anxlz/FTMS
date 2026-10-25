@@ -1,4 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { type Redis } from '@upstash/redis';
+import { Errors } from '../common/api-exception';
 import { sha256Hex } from '../common/crypto';
 
 export interface RateLimitState {
@@ -27,32 +29,53 @@ export abstract class RateLimiter {
 export const rateLimitKey = (bucket: string, subject: string): string =>
   `ftms:rl:${bucket}:${sha256Hex(subject.toLowerCase())}`;
 
-/** Production limiter on Upstash Redis — shared by every serverless instance. */
+/**
+ * Production limiter on Upstash Redis — shared by every serverless instance.
+ * It fails closed: if Redis cannot be reached, the limited action is refused
+ * with 503 SERVICE_UNAVAILABLE (never let through unlimited, never a bare 500).
+ */
 export class UpstashRateLimiter extends RateLimiter {
+  private readonly logger = new Logger('RateLimiter');
+
   constructor(private readonly redis: Redis) {
     super();
   }
 
-  async hit(key: string, windowSeconds: number): Promise<RateLimitState> {
-    // One atomic MULTI/EXEC round trip: open the window if absent, count, read TTL.
-    const tx = this.redis.multi();
-    tx.set(key, 0, { nx: true, ex: windowSeconds });
-    tx.incr(key);
-    tx.ttl(key);
-    const [, count, ttl] = await tx.exec<[unknown, number, number]>();
-    return { count: Number(count), resetInSeconds: Math.max(0, Number(ttl)) };
+  private async guard<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      this.logger.error(`Redis unavailable: ${error instanceof Error ? error.message : 'unknown'}`);
+      throw Errors.serviceUnavailable();
+    }
   }
 
-  async peek(key: string): Promise<RateLimitState> {
-    const pipe = this.redis.pipeline();
-    pipe.get(key);
-    pipe.ttl(key);
-    const [count, ttl] = await pipe.exec<[number | string | null, number]>();
-    return { count: Number(count ?? 0), resetInSeconds: Math.max(0, Number(ttl)) };
+  hit(key: string, windowSeconds: number): Promise<RateLimitState> {
+    return this.guard(async () => {
+      // One atomic MULTI/EXEC round trip: open the window if absent, count, read TTL.
+      const tx = this.redis.multi();
+      tx.set(key, 0, { nx: true, ex: windowSeconds });
+      tx.incr(key);
+      tx.ttl(key);
+      const [, count, ttl] = await tx.exec<[unknown, number, number]>();
+      return { count: Number(count), resetInSeconds: Math.max(0, Number(ttl)) };
+    });
   }
 
-  async reset(key: string): Promise<void> {
-    await this.redis.del(key);
+  peek(key: string): Promise<RateLimitState> {
+    return this.guard(async () => {
+      const pipe = this.redis.pipeline();
+      pipe.get(key);
+      pipe.ttl(key);
+      const [count, ttl] = await pipe.exec<[number | string | null, number]>();
+      return { count: Number(count ?? 0), resetInSeconds: Math.max(0, Number(ttl)) };
+    });
+  }
+
+  reset(key: string): Promise<void> {
+    return this.guard(async () => {
+      await this.redis.del(key);
+    });
   }
 }
 

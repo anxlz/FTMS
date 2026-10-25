@@ -46,4 +46,6 @@ export const Errors = {
     }),
   forbidden: () => new ApiException(403, 'FORBIDDEN', 'You do not have access to this action'),
   notFound: (what = 'Resource') => new ApiException(404, 'NOT_FOUND', `${what} not found`),
+  serviceUnavailable: () =>
+    new ApiException(503, 'SERVICE_UNAVAILABLE', 'A required service is temporarily unavailable'),
 };

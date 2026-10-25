@@ -1,9 +1,22 @@
 'use client';
 
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { type NavItem } from '@/lib/navigation';
+
+/**
+ * Shown beside a navigation link while its page loads (§18.3). A route-level
+ * loading boundary would do the same, but it would also turn every 404 into a
+ * streamed 200 — and the API's "not found" for records a reader may not see
+ * must stay a real 404.
+ */
+function Pending() {
+  const { pending } = useLinkStatus();
+  const t = useTranslations('errorPage');
+  if (!pending) return null;
+  return <span className="spinner spinner-small" role="status" aria-label={t('loading')} />;
+}
 
 export function SideNav({ items, label }: { items: NavItem[]; label: string }) {
   const t = useTranslations();
@@ -24,6 +37,7 @@ export function SideNav({ items, label }: { items: NavItem[]; label: string }) {
                 }
               >
                 {t(`nav.${item.key}`)}
+                <Pending />
               </Link>
             </li>
           ) : (

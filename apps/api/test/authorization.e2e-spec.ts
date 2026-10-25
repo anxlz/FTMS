@@ -3,6 +3,7 @@ import request from 'supertest';
 import { AttendanceTokens } from '../src/attendance/attendance-tokens';
 import { BackgroundTasks } from '../src/common/background-tasks.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { listRoutes } from './helpers/routes';
 import {
   addToGroup,
   bearer,
@@ -26,6 +27,8 @@ import {
 
 type Caller = Role | 'ANONYMOUS';
 const CALLERS: Caller[] = ['SUPER_ADMIN', 'TRAINING_DIRECTOR', 'FACULTY', 'STUDENT', 'ANONYMOUS'];
+/** A well-formed id (uuid v7) that no record has. */
+const NO_SUCH_ID = '01900000-0000-7000-8000-000000000000';
 
 describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () => {
   let app: TestApp;
@@ -873,6 +876,97 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
           .send({ reason: 'Matrix rejection' }),
       expected: STAFF_ONLY(200),
     },
+    /* ── Phase 7: the remaining routes (unknown ids: refused before they are looked up) ── */
+    {
+      name: 'GET /student-imports/:id (unknown)',
+      send: (c) => http().get(`/student-imports/${NO_SUCH_ID}`).set(as(c)),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'POST /student-imports/:id/commit (unknown)',
+      send: (c) =>
+        http()
+          .post(`/student-imports/${NO_SUCH_ID}/commit`)
+          .set(as(c))
+          .send({ planDigest: 'f'.repeat(64), applyUpdates: false, skipInvalidRows: false }),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'DELETE /student-imports/:id (unknown)',
+      send: (c) => http().delete(`/student-imports/${NO_SUCH_ID}`).set(as(c)),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'GET /profile-changes/:id (unknown)',
+      send: (c) => http().get(`/profile-changes/${NO_SUCH_ID}`).set(as(c)),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'POST /profile-changes/:id/approve (unknown)',
+      send: (c) => http().post(`/profile-changes/${NO_SUCH_ID}/approve`).set(as(c)).send({}),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'POST /profile-changes/:id/reject (unknown)',
+      send: (c) =>
+        http()
+          .post(`/profile-changes/${NO_SUCH_ID}/reject`)
+          .set(as(c))
+          .send({ reason: 'Matrix rejection' }),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'GET /student-verifications/:id (unknown)',
+      send: (c) => http().get(`/student-verifications/${NO_SUCH_ID}`).set(as(c)),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'POST /student-verifications/:id/approve (unknown)',
+      send: (c) =>
+        http()
+          .post(`/student-verifications/${NO_SUCH_ID}/approve`)
+          .set(as(c))
+          .send({ mode: 'CREATE' }),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'POST /student-verifications/:id/reject (unknown)',
+      send: (c) =>
+        http()
+          .post(`/student-verifications/${NO_SUCH_ID}/reject`)
+          .set(as(c))
+          .send({ reason: 'Matrix rejection' }),
+      expected: STAFF_ONLY(404),
+    },
+    {
+      name: 'POST /me/profile-changes/:id/cancel (unknown)',
+      send: (c) => http().post(`/me/profile-changes/${NO_SUCH_ID}/cancel`).set(as(c)),
+      expected: STUDENT_ONLY(404),
+    },
+    {
+      name: 'POST /notifications/:id/read (someone else’s or unknown)',
+      send: (c) => http().post(`/notifications/${NO_SUCH_ID}/read`).set(as(c)),
+      expected: SIGNED_IN(404),
+    },
+    {
+      name: 'PATCH /auth/me/preferences',
+      send: (c) => http().patch('/auth/me/preferences').set(as(c)).send({ preferredLocale: 'en' }),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /auth/password/change (wrong current password)',
+      send: (c) =>
+        http()
+          .post('/auth/password/change')
+          .set(as(c))
+          .send({ currentPassword: 'not the password', newPassword: 'matrix pass phrase 2026' }),
+      expected: SIGNED_IN(400),
+    },
+    {
+      name: 'POST /auth/logout',
+      send: (c) => http().post('/auth/logout').set(as(c)),
+      expected: SIGNED_IN(204),
+    },
     /* ── Phase 6: audit log and training-wide reports ── */
     {
       name: 'GET /audit-logs',
@@ -1091,6 +1185,52 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
       if (res.status === 401) expect(res.body.code).toBe('AUTH_REQUIRED');
     },
   );
+
+  /**
+   * §20.7: every route the application registers is exercised above for all
+   * five callers, or is covered by a dedicated suite for a reason given here.
+   * The routes reachable without a session are exactly the listed ones.
+   */
+  it('covers every route of the API, and opens none by accident', () => {
+    const routes = listRoutes(app);
+    const inMatrix = new Set(cases.map((c) => c.name.replace(/ \(.*\)$/, '')));
+    // Routes anyone may call: covered by their own suites (rate limits, anti-enumeration).
+    const ELSEWHERE: Record<string, string> = {
+      'POST /auth/login': 'auth.e2e-spec (public; limited per identifier and IP)',
+      'POST /auth/code/request': 'auth.e2e-spec (public; same answer for every email)',
+      'POST /auth/code/verify': 'auth.e2e-spec (public; limited per email and IP)',
+      'POST /auth/signup/verify': 'linking.e2e-spec (public; code-protected)',
+      'POST /auth/password/forgot': 'auth.e2e-spec (public; same answer for every email)',
+      'POST /auth/password/reset': 'auth.e2e-spec (public; code-protected)',
+      'POST /auth/refresh': 'auth.e2e-spec (public; refresh token rotation and reuse detection)',
+      'POST /auth/biometric/login': 'biometrics.e2e-spec (public; assertion-protected)',
+      'GET /health/ready': 'health.e2e-spec (public; no data)',
+    };
+    const missing = routes
+      .map((r) => r.key)
+      .filter((key) => !inMatrix.has(key) && !(key in ELSEWHERE));
+    expect(missing).toEqual([]);
+    expect(routes.length).toBeGreaterThan(90);
+    // Nothing is reachable without a session except these (each protected otherwise).
+    expect(routes.filter((r) => r.isPublic).map((r) => r.key)).toEqual(
+      [
+        'GET /health',
+        'GET /health/ready',
+        'GET /local-files/:token',
+        'POST /auth/biometric/login',
+        'POST /auth/biometric/login/options',
+        'POST /auth/code/request',
+        'POST /auth/code/verify',
+        'POST /auth/login',
+        'POST /auth/password/forgot',
+        'POST /auth/password/reset',
+        'POST /auth/refresh',
+        'POST /auth/signup/request',
+        'POST /auth/signup/verify',
+        'POST /internal/attendance/process-absences',
+      ].sort((a, b) => a.localeCompare(b)),
+    );
+  });
 
   /* ───────────────────────────── account rules ───────────────────────────── */
 

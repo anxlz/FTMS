@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Redis } from '@upstash/redis';
 import { MemoryRateLimiter, rateLimitKey, UpstashRateLimiter } from './rate-limiter';
 
@@ -105,5 +106,29 @@ describe('UpstashRateLimiter (against a stubbed Upstash REST API)', () => {
     expect(await limiter.peek('k')).toEqual({ count: 1, resetInSeconds: 60 });
     await limiter.reset('k');
     expect(await limiter.peek('k')).toEqual({ count: 0, resetInSeconds: 0 });
+  });
+
+  it('fails closed with 503 SERVICE_UNAVAILABLE when Redis cannot be reached', async () => {
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const limiter = new UpstashRateLimiter(
+      new Redis({
+        url: 'https://eu1-example.upstash.io',
+        token: 'token-0123456789',
+        enableTelemetry: false,
+        enableAutoPipelining: false,
+        retry: false,
+      }),
+    );
+    for (const call of [
+      () => limiter.hit('k', 60),
+      () => limiter.peek('k'),
+      () => limiter.reset('k'),
+    ]) {
+      await expect(call()).rejects.toMatchObject({
+        statusCode: 503,
+        code: 'SERVICE_UNAVAILABLE',
+      });
+    }
   });
 });

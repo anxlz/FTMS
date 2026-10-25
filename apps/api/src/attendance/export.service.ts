@@ -14,6 +14,7 @@ import { Clock } from '../common/clock';
 import { type RequestContext } from '../common/request-context';
 import { type Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExportThrottle } from '../rate-limit/export-throttle';
 import { fromDbDate, fromDbTime, toDbDate } from '../scheduling/db-values';
 import { AbsencesService } from './absences.service';
 import { AttendanceErrors } from './attendance-errors';
@@ -60,6 +61,7 @@ export class ExportService {
     private readonly audit: AuditService,
     private readonly absences: AbsencesService,
     private readonly clock: Clock,
+    private readonly throttle: ExportThrottle,
   ) {}
 
   private where(query: ExportQuery): Prisma.AttendanceRecordWhereInput {
@@ -173,6 +175,7 @@ export class ExportService {
     query: ExportQuery,
     context: RequestContext,
   ): Promise<ExportFile> {
+    await this.throttle.check(principal.userId);
     const rows = await this.rows(query);
     const labels = EXPORT_LABELS[query.locale];
     const now = this.clock.now();

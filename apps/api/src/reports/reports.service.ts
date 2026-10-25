@@ -28,6 +28,7 @@ import {
   toXlsx,
 } from '../common/tabular-export';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExportThrottle } from '../rate-limit/export-throttle';
 import { REPORT_LABELS } from './report-labels';
 
 /** Standing against the allowance: over it, exactly used up, or within. */
@@ -53,6 +54,7 @@ export class ReportsService {
     private readonly logs: AuditLogService,
     private readonly absences: AbsencesService,
     private readonly clock: Clock,
+    private readonly throttle: ExportThrottle,
   ) {}
 
   async attendanceSummary(query: AttendanceSummaryQuery): Promise<AttendanceSummaryResponse> {
@@ -182,6 +184,7 @@ export class ReportsService {
     query: ReportExportQuery,
     context: RequestContext,
   ): Promise<ExportFile> {
+    await this.throttle.check(principal.userId);
     const summary = await this.attendanceSummary(query);
     const labels = REPORT_LABELS[query.locale];
     const s = labels.summary;
@@ -256,6 +259,7 @@ export class ReportsService {
     query: ReportExportQuery,
     context: RequestContext,
   ): Promise<ExportFile> {
+    await this.throttle.check(principal.userId);
     const activity = await this.logs.activity({ from: query.from, to: query.to });
     const labels = REPORT_LABELS[query.locale];
     const a = labels.activity;

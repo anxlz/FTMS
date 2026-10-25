@@ -1,5 +1,6 @@
 import { Global, Logger, Module } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
+import { ExportThrottle } from './export-throttle';
 import { MemoryRateLimiter, RateLimiter, UpstashRateLimiter } from './rate-limiter';
 
 @Global()
@@ -16,7 +17,8 @@ import { MemoryRateLimiter, RateLimiter, UpstashRateLimiter } from './rate-limit
         return new MemoryRateLimiter();
       },
     },
+    ExportThrottle,
   ],
-  exports: [RateLimiter],
+  exports: [RateLimiter, ExportThrottle],
 })
 export class RateLimitModule {}

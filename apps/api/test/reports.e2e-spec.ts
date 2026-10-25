@@ -4,6 +4,7 @@ import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { REPORT_LABELS } from '../src/reports/report-labels';
 import { standingOf } from '../src/reports/reports.service';
+import { pdfLines } from './helpers/pdf';
 import {
   addToGroup,
   bearer,
@@ -250,6 +251,16 @@ describe('Training-wide reports', () => {
     expect(pdf.headers['content-type']).toBe('application/pdf');
     expect(raw.startsWith('%PDF-')).toBe(true);
     expect(raw).toContain('IBMPlexSansArabic');
+    // The PDF shows the group's rows with the CSV's figures (seat, then counts).
+    const groupA = lines.slice(1).filter((l) => l.split(',')[2] === 'Group A');
+    expect(groupA).toHaveLength(2);
+    const page = pdfLines(pdf.body as Buffer, true)[0]!;
+    for (const row of groupA) {
+      const [, seat, , ...rest] = row.split(',');
+      const line = page.find((l) => l.includes(seat!));
+      expect(line?.filter((c) => /^\d+$/.test(c))).toEqual([seat, ...rest.slice(0, 6)]);
+    }
+    expect(page.filter((l) => l.some((c) => /^20\d\d$/.test(c)))).toHaveLength(2);
 
     const exports = ListAuditLogsResponseSchema.parse(
       (

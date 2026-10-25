@@ -3,20 +3,36 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 6 — the Training Director's activity log (search, filters, per-event
-> before/after comparison, the affected record, decision history), faculty activity
-> history, training-wide settings with their configuration history, and
-> permission-restricted reports** (on top of Phase 5: support tickets and mutual group
+> **Status: Phase 7 — security review, accessibility and layout checks in both languages,
+> export validation, production builds with the Vercel CLI, and the final documentation**
+> (on top of Phase 6: activity log and reports; Phase 5: support tickets and mutual group
 > swaps; Phase 4: QR check-in with biometrics and location, lateness, absences,
-> corrections, attendance dashboards and exports; Phase 3: program settings, schedules,
-> visits, calendars, notifications; Phase 2: student records, import, account linking,
-> groups; Phase 1: identity, authentication, roles and permissions, i18n). The master
-> prompt (`docs/master-prompt.md`) is the source of truth; each phase is implemented
-> separately. Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
-> [`phase-1`](docs/checkpoints/phase-1.md), [`phase-2`](docs/checkpoints/phase-2.md),
-> [`phase-3`](docs/checkpoints/phase-3.md), [`phase-4`](docs/checkpoints/phase-4.md),
-> [`phase-5`](docs/checkpoints/phase-5.md), [`phase-6`](docs/checkpoints/phase-6.md) — what
-> each delivered, what was verified, and what is still open.
+> corrections, dashboards and exports; Phase 3: program settings, schedules, visits,
+> calendars, notifications; Phase 2: student records, import, account linking, groups;
+> Phase 1: identity, authentication, roles and permissions, i18n). All seven phases of
+> the master prompt (`docs/master-prompt.md`) are implemented. **Not yet deployed:** the
+> live services (Vercel, Supabase, Upstash, Gmail) need the institution's credentials —
+> see [`docs/limitations.md`](docs/limitations.md). Checkpoints:
+> [`phase-0`](docs/checkpoints/phase-0.md), [`phase-1`](docs/checkpoints/phase-1.md),
+> [`phase-2`](docs/checkpoints/phase-2.md), [`phase-3`](docs/checkpoints/phase-3.md),
+> [`phase-4`](docs/checkpoints/phase-4.md), [`phase-5`](docs/checkpoints/phase-5.md),
+> [`phase-6`](docs/checkpoints/phase-6.md), [`phase-7`](docs/checkpoints/phase-7.md).
+
+## Documentation
+
+| Document                                               | Contents (§22)                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------------- |
+| [`docs/features.md`](docs/features.md)                 | Completed features by role                                          |
+| [`docs/database.md`](docs/database.md)                 | Migrations and schema (generated from the schema and migration SQL) |
+| [`docs/authentication.md`](docs/authentication.md)     | Sign-in, sessions, permissions, biometric sign-in                   |
+| [`docs/attendance-rules.md`](docs/attendance-rules.md) | Attendance and lateness rules, biometric + location check-in        |
+| [`docs/environment.md`](docs/environment.md)           | Every environment variable                                          |
+| [`docs/deployment.md`](docs/deployment.md)             | Build and deployment (Vercel + Supabase + Upstash), rollback        |
+| [`docs/operations.md`](docs/operations.md)             | Backups, recovery, retention, secret rotation                       |
+| [`docs/security-review.md`](docs/security-review.md)   | §17 review, biometric and location data handling, findings          |
+| [`docs/testing.md`](docs/testing.md)                   | Test commands and actual results                                    |
+| [`docs/limitations.md`](docs/limitations.md)           | Unresolved issues and limitations                                   |
+| This README                                            | Setup and local development, commands, module overviews             |
 
 ## Stack
 
@@ -45,8 +61,8 @@ packages/
   core/           shared Zod schemas, types and pure helpers
   eslint-config/  shared flat ESLint configs (base / nest / next)
 assets/branding/  official logo (source) + derived icons (generated)
-scripts/          repo tooling (icon generation)
-docs/             master prompt and per-phase checkpoints
+scripts/          repo tooling (icons, schema doc, secret and bundle scans, smoke test)
+docs/             master prompt, documentation set, per-phase checkpoints
 ```
 
 ## Prerequisites
@@ -107,6 +123,10 @@ A plain local Postgres works too: set only `DATABASE_URL`.
 | `pnpm --filter @ftms/api cron:install` | Schedule automatic absences with `pg_cron` (see below)        |
 | `pnpm --filter @ftms/api mail:verify`  | Real Gmail SMTP handshake + login, sends nothing              |
 | `pnpm icons`                           | Regenerate every icon from the official logo                  |
+| `pnpm docs:schema`                     | Regenerate `docs/database.md` from the schema and migrations  |
+| `pnpm scan:secrets`                    | Fail on anything secret-shaped in committed files             |
+| `pnpm scan:bundle`                     | Fail on server-only data in the built browser bundle          |
+| `pnpm smoke --api <url> --web <url>`   | Read-only post-deployment smoke test                          |
 
 ## Health endpoints
 
@@ -194,24 +214,21 @@ it requires the Supabase variables at boot.
 Android adaptive icons keep the emblem inside the 66 dp safe circle on a white background
 layer, so every launcher mask frames it without clipping.
 
+Checked by `apps/web/lib/icons.test.ts` (source hash, every output at its declared size and
+byte count, every Android density including round and adaptive layers) and by the browser
+suite (favicon, icons and every manifest icon served at its declared size). For the future
+Tauri Android app, either point `tauri icon` at `assets/branding/generated/app-icon-1024.png`
+or copy `assets/branding/generated/android/res/` into the generated Android project's
+`app/src/main/res/`.
+
 ## Deployment (Vercel)
 
-Two Vercel projects from this repository (full production verification is Phase 7):
-
-**Web** — Root Directory `apps/web`, framework Next.js, Node.js 24. Environment:
-`NEXT_PUBLIC_API_URL` (or `API_URL`) and `BFF_SHARED_SECRET`.
-
-**API** — Root Directory `apps/api`, Node.js 24. `apps/api/vercel.json` builds with
-Turborepo, routes every path to `api/index.js` (the compiled Nest app wrapped for Vercel's
-Node runtime, booted once per warm instance), and serves no static files besides a
-`robots.txt`. Environment: everything in `.env.example` except `NEXT_PUBLIC_API_URL`,
-with `NODE_ENV=production`.
-
-After the first deploy: run `pnpm db:deploy` against production (`DIRECT_URL`), then
-`pnpm db:seed` (from a trusted terminal — it prints the one-time password), then
-`pnpm storage:provision`, then `pnpm --filter @ftms/api cron:install -- --api-url=https://<api
-host>` (automatic absences), then check `GET /health/ready` returns `ready`. The API's
-`vercel.json` ships `assets/` (the report fonts) with the function.
+Two Vercel projects from this repository — **web** (Root Directory `apps/web`) and
+**API** (Root Directory `apps/api`) — each with a `vercel.json` that builds through
+Turborepo, plus Supabase, Upstash and Gmail. Step-by-step setup, migrations, the first
+Super Admin, storage, the absence job, the smoke test, updates and rollback:
+[`docs/deployment.md`](docs/deployment.md). Variables:
+[`docs/environment.md`](docs/environment.md).
 
 ## Running the tests
 
@@ -242,6 +259,11 @@ comparison, summarized per staff member and exported — while that faculty memb
 refused the log; it reads
 emailed codes from the API's log (no SMTP in tests). The two suites run one after the
 other because they share the database.
+
+The browser suite's last project (`quality`) then opens every page of every role in Arabic
+and English and checks accessibility (axe-core, WCAG 2.1 A/AA), layout at phone, tablet and
+desktop widths, direction, untranslated keys, digits, the security headers and CSP
+violations. Commands and the latest recorded results: [`docs/testing.md`](docs/testing.md).
 
 ## Authentication and access
 
@@ -464,6 +486,16 @@ email-code sign-in always remain. The relying party is the web app's host
   (`audit.read`) as XLSX, CSV or PDF; and the filtered activity log (`audit.read`) as XLSX
   or CSV (at most 10,000 events). Every download is recorded (`report.exported`,
   `audit.exported`, `attendance.exported`).
+
+## Security (Phase 7)
+
+The §17 review, the handling of biometric credentials and location readings, and the
+findings fixed in Phase 7 are in [`docs/security-review.md`](docs/security-review.md). In
+short: both apps send strict security headers (a per-request nonce CSP on the web app);
+search text is matched literally; every route is covered by the role matrix and every
+input by a validation pipe (both enforced by tests); exports are rate-limited per
+account; an unreachable Redis or database answers 503 and limits fail closed; CI scans
+committed files and the browser bundle for secrets.
 
 ## Languages
 

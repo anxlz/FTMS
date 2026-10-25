@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/index.js": {
-      "includeFiles": "{dist,assets}/**",
+      "includeFiles": "{dist/**,assets/**,../../node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/standard-fonts/**}",
       "maxDuration": 30
     }
   },

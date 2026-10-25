@@ -1,5 +1,6 @@
 import { InvalidEnvironmentError, parseEnv, PRODUCTION_REQUIRED } from './env';
 
+// scan-secrets: allow (fake credentials for the configuration parser)
 const DB = 'postgresql://user:p%40ss@db.example.supabase.co:6543/postgres?pgbouncer=true';
 
 /** The minimum every environment needs: a database and the two token secrets. */

@@ -85,6 +85,8 @@ export const API_ERROR_CODES = [
   'SWAP_CONFLICT',
   'SWAP_NOT_ALLOWED',
   'SWAP_STALE',
+  // Phase 7 — a dependency (e.g. Redis for rate limits) cannot be reached
+  'SERVICE_UNAVAILABLE',
   'INTERNAL_ERROR',
 ] as const;
 

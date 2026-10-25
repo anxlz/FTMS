@@ -47,6 +47,7 @@ import { auditResourceHref } from './audit';
 import { navigationFor } from './navigation';
 import { permissionMessageKey } from './permission-label';
 import { safeNext } from './safe-next';
+import { contentSecurityPolicy, createNonce, STATIC_SECURITY_HEADERS } from './security-headers';
 
 type Tree = { [key: string]: string | Tree };
 
@@ -406,5 +407,45 @@ describe('device ceremonies (§4.5)', () => {
     expect(ceremonyErrorCode(named('SecurityError'))).toBe('BIOMETRIC_UNSUPPORTED');
     expect(ceremonyErrorCode('weird')).toBe('BIOMETRIC_FAILED');
     expect(ceremonyErrorCode(null)).toBe('BIOMETRIC_FAILED');
+  });
+});
+
+describe('browser security policy (§17)', () => {
+  const directive = (csp: string, name: string) =>
+    csp
+      .split('; ')
+      .find((d) => d.startsWith(`${name} `))
+      ?.split(' ')
+      .slice(1);
+
+  it('allows scripts only from this site with the request nonce', () => {
+    const csp = contentSecurityPolicy('abc123', { development: false, https: true });
+    expect(directive(csp, 'script-src')).toEqual([`'self'`, `'nonce-abc123'`, `'strict-dynamic'`]);
+    expect(csp).not.toContain('unsafe-eval');
+    expect(directive(csp, 'frame-ancestors')).toEqual([`'none'`]);
+    expect(directive(csp, 'object-src')).toEqual([`'none'`]);
+    expect(directive(csp, 'connect-src')).toEqual([`'self'`]);
+    expect(directive(csp, 'form-action')).toEqual([`'self'`]);
+    expect(csp.endsWith('upgrade-insecure-requests')).toBe(true);
+  });
+
+  it('relaxes only what development tooling needs, and never upgrades plain local HTTP', () => {
+    const dev = contentSecurityPolicy('n', { development: true, https: false });
+    expect(directive(dev, 'script-src')).toContain(`'unsafe-eval'`);
+    expect(dev).not.toContain('upgrade-insecure-requests');
+  });
+
+  it('creates a fresh 128-bit nonce for every request', () => {
+    const a = createNonce();
+    expect(Buffer.from(a, 'base64')).toHaveLength(16);
+    expect(createNonce()).not.toBe(a);
+  });
+
+  it('keeps pages out of frames and limits device features to this site', () => {
+    const headers = Object.fromEntries(STATIC_SECURITY_HEADERS.map((h) => [h.key, h.value]));
+    expect(headers['X-Frame-Options']).toBe('DENY');
+    expect(headers['X-Content-Type-Options']).toBe('nosniff');
+    expect(headers['Permissions-Policy']).toContain('geolocation=(self)');
+    expect(headers['Permissions-Policy']).toContain('camera=()');
   });
 });

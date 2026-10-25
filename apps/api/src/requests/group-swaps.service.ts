@@ -42,6 +42,7 @@ import {
   toSwapView,
   withParties,
 } from './swap-steps';
+import { literal } from '../common/search';
 
 type Tx = Prisma.TransactionClient;
 
@@ -282,8 +283,8 @@ export class GroupSwapsService {
     if (q) {
       const match: Prisma.StudentProfileWhereInput = {
         OR: [
-          { seatNumber: { contains: q.toUpperCase() } },
-          { fullName: { contains: q, mode: 'insensitive' } },
+          { seatNumber: { contains: literal(q.toUpperCase()) } },
+          { fullName: { contains: literal(q), mode: 'insensitive' } },
         ],
       };
       where.OR = [{ requester: match }, { counterpart: match }];

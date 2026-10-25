@@ -34,6 +34,7 @@ import { FileStore } from '../storage/file-store';
 import { StudentErrors } from '../students/student-errors';
 import { RequestErrors } from './requests-errors';
 import { SWAP_INCLUDE, toSwapView } from './swap-steps';
+import { literal } from '../common/search';
 
 type Tx = Prisma.TransactionClient;
 
@@ -374,12 +375,12 @@ export class TicketsService {
       const number = /^#?(\d{1,9})$/.exec(q);
       where.OR = [
         ...(number ? [{ number: Number(number[1]) }] : []),
-        { subject: { contains: q, mode: 'insensitive' } },
+        { subject: { contains: literal(q), mode: 'insensitive' } },
         {
           student: {
             OR: [
-              { seatNumber: { contains: q.toUpperCase() } },
-              { fullName: { contains: q, mode: 'insensitive' } },
+              { seatNumber: { contains: literal(q.toUpperCase()) } },
+              { fullName: { contains: literal(q), mode: 'insensitive' } },
             ],
           },
         },

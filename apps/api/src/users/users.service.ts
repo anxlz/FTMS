@@ -35,6 +35,7 @@ import {
   USER_INCLUDE,
   type UserWithRelations,
 } from './user-mapping';
+import { literal } from '../common/search';
 
 const conflict = (code: 'EMAIL_ALREADY_EXISTS' | 'SEAT_NUMBER_ALREADY_EXISTS') =>
   new ApiException(
@@ -136,9 +137,9 @@ export class UsersService {
       ...(q
         ? {
             OR: [
-              { email: { contains: q.toLowerCase() } },
-              { displayName: { contains: q, mode: 'insensitive' } },
-              { studentProfile: { seatNumber: { contains: q.toUpperCase() } } },
+              { email: { contains: literal(q.toLowerCase()) } },
+              { displayName: { contains: literal(q), mode: 'insensitive' } },
+              { studentProfile: { seatNumber: { contains: literal(q.toUpperCase()) } } },
             ],
           }
         : {}),

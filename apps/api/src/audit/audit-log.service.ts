@@ -41,9 +41,11 @@ import {
 } from '../common/tabular-export';
 import { type AuditLog, type Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExportThrottle } from '../rate-limit/export-throttle';
 import { REPORT_LABELS, type ReportLabels } from '../reports/report-labels';
 import { fromDbDate } from '../scheduling/db-values';
 import { AuditService } from './audit.service';
+import { literal } from '../common/search';
 
 type Filters = Omit<ListAuditLogsQuery, 'page' | 'pageSize'>;
 type Json = Record<string, unknown>;
@@ -75,6 +77,7 @@ export class AuditLogService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly clock: Clock,
+    private readonly throttle: ExportThrottle,
   ) {}
 
   /* ─────────────────────────── the log ─────────────────────────── */
@@ -96,10 +99,10 @@ export class AuditLogService {
     if (q.q) {
       and.push({
         OR: [
-          { actorName: { contains: q.q, mode: 'insensitive' } },
-          { action: { contains: q.q, mode: 'insensitive' } },
+          { actorName: { contains: literal(q.q), mode: 'insensitive' } },
+          { action: { contains: literal(q.q), mode: 'insensitive' } },
           { resourceId: q.q },
-          { reason: { contains: q.q, mode: 'insensitive' } },
+          { reason: { contains: literal(q.q), mode: 'insensitive' } },
         ],
       });
     }
@@ -439,6 +442,7 @@ export class AuditLogService {
     query: AuditExportQuery,
     context: RequestContext,
   ): Promise<ExportFile> {
+    await this.throttle.check(principal.userId);
     const where = this.where(query);
     const total = await this.prisma.auditLog.count({ where });
     if (total > AUDIT_EXPORT_MAX_ROWS) throw AttendanceErrors.exportTooLarge(AUDIT_EXPORT_MAX_ROWS);

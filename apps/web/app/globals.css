@@ -85,6 +85,9 @@ a {
   position: absolute;
   width: 1px;
   height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
@@ -536,6 +539,9 @@ a.nav-link[aria-current='page'] {
 
 .table-wrap {
   overflow-x: auto;
+  /* Contains absolutely positioned descendants (visually hidden captions and
+     labels) so they scroll with the table instead of widening the page. */
+  position: relative;
 }
 table {
   inline-size: 100%;
@@ -1198,4 +1204,43 @@ h3,
 }
 .audit-table td {
   vertical-align: top;
+}
+
+/* ── Phase 7: status pages and navigation loading ──────────────────────── */
+.status-page {
+  max-inline-size: 36rem;
+  margin: 10vh auto;
+  padding: 0 1rem;
+  display: grid;
+  gap: 1rem;
+  text-align: center;
+  justify-items: center;
+}
+.spinner {
+  inline-size: 1.2rem;
+  block-size: 1.2rem;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-block-start-color: var(--brand-blue);
+  animation: spin 0.8s linear infinite;
+}
+.spinner-small {
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+  border-width: 2px;
+  margin-inline-start: 0.5rem;
+  display: inline-block;
+  vertical-align: middle;
+  border-color: rgb(255 255 255 / 40%);
+  border-block-start-color: #fff;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
 }

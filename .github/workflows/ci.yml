@@ -54,14 +54,28 @@ jobs:
       - name: Formatting
         run: pnpm format:check
 
+      - name: No secrets in committed files
+        run: pnpm scan:secrets
+
       - name: Lint
         run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
 
+      # A stand-in secret (not a real one) set while building, so the next step
+      # can prove server-only values never reach the browser bundle (§17).
       - name: Build
         run: pnpm build
+        env:
+          BFF_SHARED_SECRET: ci-bundle-canary-7b1e0c9a4f2d48e6a3c5b8d1e0f2a4c6
+          API_URL: http://api.ci-canary.invalid:4000
+
+      - name: No server-only data in the browser bundle
+        run: pnpm scan:bundle
+        env:
+          BFF_SHARED_SECRET: ci-bundle-canary-7b1e0c9a4f2d48e6a3c5b8d1e0f2a4c6
+          API_URL: http://api.ci-canary.invalid:4000
 
       - name: Unit tests
         run: pnpm test
@@ -93,3 +107,8 @@ jobs:
         run: |
           pnpm icons
           git diff --exit-code -- apps/web/app apps/web/public assets/branding
+
+      - name: Schema documentation matches the migrations
+        run: |
+          pnpm docs:schema
+          git diff --exit-code -- docs/database.md

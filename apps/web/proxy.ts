@@ -1,22 +1,42 @@
 import { type AuthResponse, AuthResponseSchema } from '@ftms/core';
 import { type NextRequest, NextResponse } from 'next/server';
 import { ACCESS_COOKIE, cookieOptions, needsRefresh, REFRESH_COOKIE } from './lib/auth/tokens';
+import { contentSecurityPolicy, createNonce } from './lib/security-headers';
 
 /**
- * Runs before every page render: when the short-lived access token is missing or
- * about to expire and a refresh token exists, rotates the pair with the API so the
- * page renders with a valid session. Pages themselves decide who may see them.
+ * Runs before every page render:
+ * - sets a Content-Security-Policy with a fresh nonce (Next applies it to its
+ *   own scripts when the request carries the policy);
+ * - when the short-lived access token is missing or about to expire and a
+ *   refresh token exists, rotates the pair with the API so the page renders
+ *   with a valid session. Pages themselves decide who may see them.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const nonce = createNonce();
+  const https =
+    request.nextUrl.protocol === 'https:' ||
+    request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() === 'https';
+  const csp = contentSecurityPolicy(nonce, {
+    development: process.env.NODE_ENV === 'development',
+    https,
+  });
+  request.headers.set('x-nonce', nonce);
+  request.headers.set('content-security-policy', csp);
+  const next = () => {
+    const response = NextResponse.next({ request: { headers: request.headers } });
+    response.headers.set('content-security-policy', csp);
+    return response;
+  };
+
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   if (!refreshToken || !needsRefresh(request.cookies.get(ACCESS_COOKIE)?.value)) {
-    return NextResponse.next();
+    return next();
   }
 
   const refreshed = await refresh(refreshToken, request);
   if (!refreshed) {
     // The session is gone (expired, revoked, or reused): drop both cookies.
-    const response = NextResponse.next();
+    const response = next();
     response.cookies.delete(ACCESS_COOKIE);
     response.cookies.delete(REFRESH_COOKIE);
     return response;
@@ -25,7 +45,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // Let this request's server components see the new access token…
   request.cookies.set(ACCESS_COOKIE, refreshed.accessToken);
   request.cookies.set(REFRESH_COOKIE, refreshed.refreshToken);
-  const response = NextResponse.next({ request: { headers: request.headers } });
+  const response = next();
   // …and the browser keep it.
   response.cookies.set(
     ACCESS_COOKIE,

@@ -145,7 +145,49 @@ describe('ApiExceptionFilter', () => {
     });
   });
 
+  it('passes on the client status of body-parser errors, and nothing else of them', () => {
+    const tooLarge = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      statusCode: 413,
+      expose: true,
+      type: 'entity.too.large',
+    });
+    expect(run(tooLarge).body).toEqual({
+      statusCode: 413,
+      code: 'FILE_TOO_LARGE',
+      message: 'Request body too large',
+    });
+    const malformed = Object.assign(new SyntaxError('Unexpected token } in JSON'), {
+      status: 400,
+      expose: true,
+    });
+    expect(run(malformed).body).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: 'Malformed request',
+    });
+    // A 5xx or unexposed status is still an internal error.
+    expect(run(Object.assign(new Error('x'), { status: 503, expose: false })).statusCode).toBe(500);
+  });
+
+  it('answers 503 SERVICE_UNAVAILABLE when the database cannot be reached', () => {
+    const prismaError = (code: string) =>
+      Object.assign(new Error(`Prisma ${code}`), { name: 'PrismaClientKnownRequestError', code });
+    for (const code of ['P1001', 'P1000', 'P1017', 'P2024', 'P2037']) {
+      expect(run(prismaError(code)).body).toEqual({
+        statusCode: 503,
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'A required service is temporarily unavailable',
+      });
+    }
+    const init = Object.assign(new Error('init'), { name: 'PrismaClientInitializationError' });
+    expect(run(init).statusCode).toBe(503);
+    // Data errors stay internal errors (or are handled where they occur).
+    expect(run(prismaError('P2002')).statusCode).toBe(500);
+  });
+
   it('hides unexpected errors behind a generic 500', () => {
+    // scan-secrets: allow (a fake connection string the filter must not leak)
     const res = run(new Error('connection string postgresql://user:pw@db leaked?'));
     expect(res.statusCode).toBe(500);
     expect(res.body).toEqual({

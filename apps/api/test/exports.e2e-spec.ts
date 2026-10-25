@@ -8,6 +8,7 @@ import { type CellValue, Workbook } from 'exceljs';
 import request from 'supertest';
 import { EXPORT_LABELS } from '../src/attendance/export-labels';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { pdfLines } from './helpers/pdf';
 import {
   addToGroup,
   bearer,
@@ -394,7 +395,7 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
     }
   });
 
-  it('PDF: a printable document with the Arabic font embedded', async () => {
+  it('PDF: a printable document with the Arabic font embedded, showing every record', async () => {
     for (const locale of ['ar', 'en'] as const) {
       const res = await download(`format=pdf&locale=${locale}`).expect(200);
       expect(res.headers['content-type']).toBe('application/pdf');
@@ -403,6 +404,49 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
       expect(pdf.trimEnd().endsWith('%%EOF')).toBe(true);
       expect(pdf).toContain('IBMPlexSansArabic');
       expect(pdf.match(/\/Type\s*\/Page[^s]/g)).toHaveLength(1);
+
+      // The text drawn on the page: one record per row (long cells wrap onto
+      // the following lines). The PDF's text layer stores shaped Arabic glyphs,
+      // so extracted Arabic can come out with letters swapped or split (see
+      // docs/limitations.md); Arabic cells are compared by their letters, and
+      // dates, times, seat numbers and minutes late exactly.
+      const lines = pdfLines(res.body as Buffer, locale === 'ar')[0]!;
+      const records: { cells: string[]; text: string }[] = [];
+      for (const line of lines) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(line[0] ?? '')) records.push({ cells: line, text: '' });
+        if (records.length > 0 && !/^\S+ \d+ \/ \d+$/.test(line.join(' '))) {
+          records.at(-1)!.text += line.join('');
+        }
+      }
+      const letters = (text: string) =>
+        [...text.normalize('NFKC').replace(/[\s\-—]/g, '')].sort().join('');
+      const L = EXPORT_LABELS[locale];
+      const expected = expectedRows(locale).map((r) => {
+        const name = r[4]!.replace(/^'/, ''); // a PDF cannot run formulas: shown as typed
+        const checkIn = r[7] || '—';
+        const late = r[6] === L.status.LATE ? r[8]! : '—';
+        return {
+          key: [r[0], r[1], r[5], checkIn, late],
+          letters: letters(
+            [r[0], r[1], r[2], r[3], name, r[5], r[6], checkIn, late, r[9], r[11]].join(''),
+          ),
+          group: `${r[0]}|${r[3]}`,
+        };
+      });
+      expect(
+        records.map((r) => [r.cells[0], r.cells[1], r.cells[5], r.cells[7], r.cells[8]]).sort(),
+      ).toEqual(expected.map((e) => e.key).sort());
+      expect(records.map((r) => letters(r.text)).sort()).toEqual(
+        expected.map((e) => e.letters).sort(),
+      );
+      // Same visit and group order as the other formats.
+      expect(records.map((r) => letters(`${r.cells[0]}${r.cells[3]}`))).toEqual(
+        expected.map((e) => letters(e.group.replace('|', ''))),
+      );
+      const count = lines.find(
+        (l) => l.join(' ').includes(String(expected.length)) && l.length === 1,
+      );
+      expect(count).toBeDefined();
     }
   });
 

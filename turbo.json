@@ -31,6 +31,21 @@
       "dependsOn": ["^build", "prisma:generate"],
       "outputs": []
     },
+    "@ftms/api#test": {
+      "dependsOn": ["^build", "prisma:generate"],
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env.example",
+        "$TURBO_ROOT$/apps/web/.env.example",
+        "$TURBO_ROOT$/docs/environment.md"
+      ]
+    },
+    "@ftms/web#test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/assets/branding/**"]
+    },
     "test:e2e": {
       "dependsOn": ["^build", "prisma:generate"],
       "cache": false,

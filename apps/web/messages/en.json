@@ -142,6 +142,7 @@
     "SELF_ACTION_FORBIDDEN": "You cannot do this to your own account.",
     "ROLE_CHANGE_NOT_ALLOWED": "A student account cannot change role.",
     "PERMISSION_NOT_GRANTABLE": "This permission cannot be granted to this account.",
+    "SERVICE_UNAVAILABLE": "The service is temporarily unavailable. Please try again in a few minutes.",
     "INTERNAL_ERROR": "Something went wrong. Please try again.",
     "NETWORK": "Could not reach the server. Please try again shortly.",
     "PASSWORDS_DONT_MATCH": "The passwords do not match.",
@@ -1872,5 +1873,16 @@
         "pdf": "PDF"
       }
     }
+  },
+  "errorPage": {
+    "notFoundTitle": "Page not found",
+    "notFoundText": "This page does not exist, or you do not have access to it.",
+    "home": "Go to the start page",
+    "errorTitle": "This page could not be shown",
+    "errorText": "Something went wrong on our side. Your data is safe; please try again. If it keeps happening, tell the training office and give them the reference below.",
+    "reference": "Reference:",
+    "retry": "Try again",
+    "dashboard": "Go to the dashboard",
+    "loading": "Loading…"
   }
 }

@@ -32,6 +32,7 @@ import {
   toStudentDetail,
   toStudentRecord,
 } from './student-mapping';
+import { literal } from '../common/search';
 
 /** Columns for a name given as parts; the full name is always composed from them. */
 export const nameColumns = (name: NameParts) => ({
@@ -100,9 +101,9 @@ export class StudentsService {
       ...(q
         ? {
             OR: [
-              { seatNumber: { contains: q.toUpperCase() } },
-              { universityEmail: { contains: q.toLowerCase() } },
-              ...(key ? [{ nameKey: { contains: key } }] : []),
+              { seatNumber: { contains: literal(q.toUpperCase()) } },
+              { universityEmail: { contains: literal(q.toLowerCase()) } },
+              ...(key ? [{ nameKey: { contains: literal(key) } }] : []),
             ],
           }
         : {}),
