@@ -29,6 +29,12 @@ export const LIMITS = {
   biometricOptionsPerIp: { limit: 60, windowSeconds: 15 * 60 },
   biometricFailuresPerIp: { limit: 30, windowSeconds: 15 * 60 },
   checkInAttemptsPerUser: { limit: 20, windowSeconds: 10 * 60 },
+  // Guest attendance (Phase 8): no account to count against, so per client IP.
+  // A whole group may share one network, so the limits allow a classroom at once.
+  guestContextPerIp: { limit: 300, windowSeconds: 10 * 60 },
+  guestSubmissionsPerIp: { limit: 120, windowSeconds: 10 * 60 },
+  // Device-key sign-in (Phase 8): failures per client IP, like passkeys.
+  deviceKeyFailuresPerIp: { limit: 30, windowSeconds: 15 * 60 },
 } as const;
 
 export type LimitPolicy = (typeof LIMITS)[keyof typeof LIMITS];

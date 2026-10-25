@@ -15,8 +15,6 @@ import {
 import {
   type AttendanceOverview,
   type CheckInContext,
-  type CheckInOptionsRequest,
-  CheckInOptionsRequestSchema,
   type CheckInRequest,
   CheckInRequestSchema,
   type CheckInResult,
@@ -24,13 +22,18 @@ import {
   CorrectAttendanceRequestSchema,
   type ExportQuery,
   ExportQuerySchema,
+  type GuestCheckInContext,
+  type GuestCheckInRequest,
+  GuestCheckInRequestSchema,
+  type GuestCheckInResult,
+  type GuestContextRequest,
+  GuestContextRequestSchema,
   type OwnAttendanceResponse,
   type VisitAttendanceQuery,
   VisitAttendanceQuerySchema,
   type VisitAttendanceResponse,
   type VisitAttendanceRow,
   type VisitQrCodes,
-  type WebAuthnOptionsResponse,
 } from '@ftms/core';
 import type { Response } from 'express';
 import {
@@ -53,6 +56,7 @@ import { AttendanceTokens } from './attendance-tokens';
 import { AttendanceService } from './attendance.service';
 import { CheckInService } from './check-in.service';
 import { ExportService } from './export.service';
+import { GuestCheckInService } from './guest-check-in.service';
 
 const uuid = new ParseUUIDPipe({ version: '7' });
 
@@ -70,16 +74,6 @@ export class CheckInController {
     return this.checkIns.context(principal, token);
   }
 
-  /** A WebAuthn challenge for this check-in, bound to this student and visit. */
-  @Post('options')
-  @HttpCode(200)
-  options(
-    @CurrentPrincipal() principal: AuthPrincipal,
-    @Body(new ZodValidationPipe(CheckInOptionsRequestSchema)) body: CheckInOptionsRequest,
-  ): Promise<WebAuthnOptionsResponse> {
-    return this.checkIns.options(principal, body.token);
-  }
-
   @Post()
   checkIn(
     @CurrentPrincipal() principal: AuthPrincipal,
@@ -87,6 +81,35 @@ export class CheckInController {
     @Ctx() context: RequestContext,
   ): Promise<CheckInResult> {
     return this.checkIns.checkIn(principal, body, context);
+  }
+}
+
+/**
+ * Guest attendance (Phase 8): public — no account, password, code or biometrics,
+ * by deliberate policy. The typed name and seat number are not verified; the token,
+ * the window, the form, the location policy and abuse limits are checked.
+ */
+@Controller('attendance/guest')
+export class GuestCheckInController {
+  constructor(private readonly guests: GuestCheckInService) {}
+
+  @Public()
+  @Post('context')
+  @HttpCode(200)
+  context(
+    @Body(new ZodValidationPipe(GuestContextRequestSchema)) body: GuestContextRequest,
+    @Ctx() context: RequestContext,
+  ): Promise<GuestCheckInContext> {
+    return this.guests.context(body.token, context);
+  }
+
+  @Public()
+  @Post('check-in')
+  checkIn(
+    @Body(new ZodValidationPipe(GuestCheckInRequestSchema)) body: GuestCheckInRequest,
+    @Ctx() context: RequestContext,
+  ): Promise<GuestCheckInResult> {
+    return this.guests.submit(body, context);
   }
 }
 

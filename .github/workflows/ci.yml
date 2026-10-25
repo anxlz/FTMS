@@ -112,3 +112,36 @@ jobs:
         run: |
           pnpm docs:schema
           git diff --exit-code -- docs/database.md
+
+  mobile-native:
+    # The Android app's Rust shell and device-key plugin, compiled for the host
+    # (Tauri's Linux webview): formatting, clippy and unit tests. Building the APK
+    # needs the Android SDK and NDK — see docs/mobile.md.
+    name: Android app — Rust checks (host target)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Tauri's Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Formatting and clippy
+        run: pnpm --filter @ftms/mobile native:check
+
+      - name: Unit tests
+        run: pnpm --filter @ftms/mobile native:test

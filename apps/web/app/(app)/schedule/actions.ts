@@ -26,9 +26,10 @@ const timingFrom = (data: FormData) => ({
 const strings = (data: FormData, name: string): string[] =>
   data.getAll(name).filter((v): v is string => typeof v === 'string');
 
+/** Empty = no limit. */
 const policyFrom = (data: FormData) => ({
-  biometricFallback: field(data, 'biometricFallback'),
-  geolocation: field(data, 'geolocation'),
+  radiusMeters: num(data, 'radiusMeters'),
+  maxAccuracyMeters: num(data, 'maxAccuracyMeters'),
 });
 
 const PROGRAM_FIELDS = [
@@ -39,8 +40,8 @@ const PROGRAM_FIELDS = [
   'checkInOpensMinutes',
   'graceMinutes',
   'checkInClosesMinutes',
-  'biometricFallback',
-  'geolocation',
+  'radiusMeters',
+  'maxAccuracyMeters',
   'reason',
 ];
 

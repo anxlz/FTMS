@@ -58,7 +58,7 @@ export const SUGGESTED_PROGRAM_SETTINGS = {
   durationWeeks: 12,
   allowedAbsences: 2,
   timing: { checkInOpensMinutes: 15, graceMinutes: 15, checkInClosesMinutes: 60 },
-  checkInPolicy: { biometricFallback: 'ALLOW_UNVERIFIED', geolocation: 'REQUIRED' },
+  checkInPolicy: { radiusMeters: 500, maxAccuracyMeters: 100 },
 } as const;
 
 /** Last day of a program that starts on `startDate` and lasts `weeks` weeks. */
@@ -499,6 +499,7 @@ export const NOTIFICATION_TYPES = [
   'profile_change.rejected',
   'attendance.absent',
   'attendance.corrected',
+  'attendance.guest_recorded',
   'security.biometric_enabled',
   'security.biometric_revoked',
   'ticket.replied',

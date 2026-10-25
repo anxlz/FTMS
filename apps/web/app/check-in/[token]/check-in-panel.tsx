@@ -1,16 +1,17 @@
 'use client';
 
 import { APP_TIMEZONE, type AttendanceRecord, type CheckInContext } from '@ftms/core';
-import { startAuthentication } from '@simplewebauthn/browser';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 import { FormError } from '@/components/form-controls';
-import { useWebAuthnSupport } from '@/lib/use-webauthn';
-import { ceremonyErrorCode, type LocationReading, readLocation } from '@/lib/device';
+import { LocationHelp, LocationReadout, LocationRule } from '@/components/location-step';
+import { type LocationReading } from '@/lib/device';
 import { type FormState, IDLE } from '@/lib/forms';
-import { checkInAction, checkInOptionsAction } from '../actions';
+import { readLocation } from '@/lib/native';
+import { useRefreshOnResume } from '@/lib/use-refresh-on-resume';
+import { checkInAction } from '../actions';
 
 interface Texts {
   date: string;
@@ -21,23 +22,22 @@ interface Texts {
   serverTime: string;
 }
 
-type Step = 'idle' | 'locating' | 'confirming' | 'sending';
+type Step = 'idle' | 'locating' | 'sending';
 
 /**
- * The student's side of §7.2: one button that reads the device location, asks
- * the device for a fresh biometric confirmation bound to this visit, and sends
- * both. The outcome (present, late, refused) is decided by the server.
+ * The student's side of §7.2 (revised in Phase 8): one button that reads the
+ * device location and sends it with the QR token. No biometric step — biometrics
+ * are a sign-in convenience only. The outcome (present, late, refused) is the
+ * server's; a scan or a location reading alone records nothing.
  */
 export function CheckInPanel({
   token,
   context,
   text,
-  enableHref,
 }: {
   token: string;
   context: CheckInContext;
   text: Texts;
-  enableHref: string;
 }) {
   const t = useTranslations('checkIn');
   const ta = useTranslations('attendance');
@@ -45,64 +45,39 @@ export function CheckInPanel({
   const router = useRouter();
   const [state, setState] = useState<FormState>(IDLE);
   const [step, setStep] = useState<Step>('idle');
+  const [reading, setReading] = useState<LocationReading | null>(null);
   const [record, setRecord] = useState<AttendanceRecord | null>(context.existing);
   const [justRecorded, setJustRecorded] = useState(false);
-  const webAuthn = useWebAuthnSupport();
   const [pending, startTransition] = useTransition();
+  useRefreshOnResume(!record && !pending);
 
   const clock = (iso: string) =>
     new Intl.DateTimeFormat(locale, { timeZone: APP_TIMEZONE, timeStyle: 'short' }).format(
       new Date(iso),
     );
-  const { visit, window: w, requirements } = context;
-  const biometric = requirements.biometric;
-  const locationRequired = requirements.geolocation === 'REQUIRED';
+  const { visit, window: w } = context;
 
   const submit = () =>
     startTransition(async () => {
       setState(IDLE);
-      // 1. The device's location at this moment (§7.2).
+      // 1. The device's location at this moment.
       setStep('locating');
-      let location: LocationReading | undefined;
-      const reading = await readLocation(locationRequired ? 20_000 : 8_000);
-      if (reading.ok) location = reading.reading;
-      else if (locationRequired) {
+      const location = await readLocation(20_000);
+      if (!location.ok) {
         setStep('idle');
-        setState({ status: 'error', error: reading.error });
+        setState({ status: 'error', error: location.error });
         return;
       }
-
-      // 2. A fresh biometric confirmation for this check-in.
-      let confirmation: { challengeId: string; response: unknown } | undefined;
-      if (biometric === 'REQUIRED') {
-        setStep('confirming');
-        const start = await checkInOptionsAction(token);
-        if (!start.ok) {
-          setStep('idle');
-          setState({
-            status: 'error',
-            error: start.error,
-            retryAfterMinutes: start.retryAfterMinutes,
-          });
-          return;
-        }
-        try {
-          const response = await startAuthentication({
-            optionsJSON: start.options as unknown as Parameters<
-              typeof startAuthentication
-            >[0]['optionsJSON'],
-          });
-          confirmation = { challengeId: start.challengeId, response };
-        } catch (error) {
-          setStep('idle');
-          setState({ status: 'error', error: ceremonyErrorCode(error) });
-          return;
-        }
-      }
-
-      // 3. The server decides.
+      setReading(location.reading);
+      // 2. The server decides. No automatic retry: a second attempt is the student's choice,
+      //    and the one-record-per-visit rule makes it safe.
       setStep('sending');
-      const result = await checkInAction({ token, biometric: confirmation, location });
+      let result;
+      try {
+        result = await checkInAction({ token, location: location.reading });
+      } catch {
+        result = { ok: false as const, error: 'NETWORK' };
+      }
       setStep('idle');
       if (result.ok) {
         setRecord(result.record);
@@ -112,9 +87,11 @@ export function CheckInPanel({
       setState({
         status: 'error',
         error: result.error,
-        retryAfterMinutes: result.retryAfterMinutes,
+        retryAfterMinutes: 'retryAfterMinutes' in result ? result.retryAfterMinutes : undefined,
       });
-      if (result.error === 'ATTENDANCE_ALREADY_RECORDED') router.refresh();
+      if (result.error === 'ATTENDANCE_ALREADY_RECORDED' || result.error === 'NETWORK') {
+        router.refresh();
+      }
     });
 
   const header = (
@@ -146,9 +123,7 @@ export function CheckInPanel({
             <p className="small">{t('at', { time: clock(record.checkedInAt) })}</p>
           )}
           <ul className="small check-in-facts">
-            <li>
-              {record.biometricVerified ? t('biometricConfirmed') : t('biometricNotConfirmed')}
-            </li>
+            {record.source === 'GUEST' && <li>{t('viaGuest')}</li>}
             {record.location && <li>{t('locationShared')}</li>}
             {record.correction && <li>{t('corrected')}</li>}
           </ul>
@@ -199,43 +174,25 @@ export function CheckInPanel({
 
       {w.state === 'OPEN' && (
         <div className="stack">
-          {biometric === 'REQUIRED' && <p className="muted">{t('requiresBiometric')}</p>}
-          {biometric === 'NOT_ENROLLED_ALLOWED' && (
-            <p className="alert alert-info">
-              {t('fallbackAllowed')} <Link href={enableHref}>{t('enableBiometrics')}</Link>
-            </p>
-          )}
-          {biometric === 'NOT_ENROLLED_BLOCKED' && (
-            <p className="alert alert-error">
-              {t('fallbackBlocked')} <Link href={enableHref}>{t('enableBiometrics')}</Link>
-            </p>
-          )}
-          {biometric === 'REQUIRED' && webAuthn === false && (
-            <p className="alert alert-error">{t('noWebAuthn')}</p>
-          )}
-          <p className="muted small">
-            {locationRequired ? t('locationRequired') : t('locationOptional')}
-          </p>
+          <LocationRule rule={context.location} />
+          {reading && <LocationReadout reading={reading} />}
           <FormError state={state} />
-          {biometric !== 'NOT_ENROLLED_BLOCKED' && (
-            <button
-              type="button"
-              className="btn btn-primary btn-large"
-              onClick={submit}
-              disabled={pending || (biometric === 'REQUIRED' && webAuthn !== true)}
-              aria-busy={pending}
-            >
-              {step === 'locating'
-                ? t('locating')
-                : step === 'confirming'
-                  ? t('confirming')
-                  : step === 'sending'
-                    ? t('sending')
-                    : biometric === 'REQUIRED'
-                      ? t('confirmAndCheckIn')
-                      : t('checkIn')}
-            </button>
-          )}
+          {state.status === 'error' && state.error && <LocationHelp code={state.error} />}
+          <button
+            type="button"
+            className="btn btn-primary btn-large"
+            onClick={submit}
+            disabled={pending}
+            aria-busy={pending}
+          >
+            {step === 'locating'
+              ? t('locating')
+              : step === 'sending'
+                ? t('sending')
+                : state.status === 'error'
+                  ? t('tryAgain')
+                  : t('checkIn')}
+          </button>
         </div>
       )}
       <p className="muted small">{t('serverTime', { time: text.serverTime })}</p>

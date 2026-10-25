@@ -39,9 +39,10 @@ export const uuidFromHandle = (handle: string): string | null => {
 };
 
 /**
- * Single-use WebAuthn challenges, stored server-side. A registration and a
- * check-in challenge are bound to the account (and a check-in one to the
- * visit), so an assertion made for one purpose cannot be replayed for another.
+ * Single-use challenges, stored server-side (WebAuthn passkeys and Android device
+ * keys). A registration challenge is bound to the account and a device sign-in
+ * challenge to the credential, so a signature made for one purpose, account or
+ * device cannot be replayed for another.
  */
 @Injectable()
 export class WebAuthnChallenges {
@@ -53,7 +54,7 @@ export class WebAuthnChallenges {
   async create(
     purpose: WebAuthnPurpose,
     challenge: string,
-    binding: { userId?: string; visitId?: string } = {},
+    binding: { userId?: string; visitId?: string; credentialId?: string } = {},
     db: Db = this.prisma,
   ): Promise<string> {
     const now = this.clock.now();
@@ -67,6 +68,7 @@ export class WebAuthnChallenges {
         challenge,
         userId: binding.userId ?? null,
         visitId: binding.visitId ?? null,
+        credentialId: binding.credentialId ?? null,
         createdAt: now,
         expiresAt: new Date(now.getTime() + CHALLENGE_SECONDS * 1000),
       },
@@ -78,7 +80,7 @@ export class WebAuthnChallenges {
   async consume(
     id: string,
     purpose: WebAuthnPurpose,
-    binding: { userId?: string | null; visitId?: string | null } = {},
+    binding: { userId?: string | null; visitId?: string | null; credentialId?: string | null } = {},
     db: Db = this.prisma,
   ): Promise<string | null> {
     const now = this.clock.now();
@@ -90,6 +92,7 @@ export class WebAuthnChallenges {
         expiresAt: { gt: now },
         ...(binding.userId !== undefined ? { userId: binding.userId } : {}),
         ...(binding.visitId !== undefined ? { visitId: binding.visitId } : {}),
+        ...(binding.credentialId !== undefined ? { credentialId: binding.credentialId } : {}),
       },
       data: { consumedAt: now },
     });

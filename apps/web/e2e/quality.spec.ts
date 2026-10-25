@@ -54,7 +54,7 @@ const VIEWPORTS = [
 
 /** Message keys that leaked into the page instead of their translation. */
 const RAW_KEY =
-  /\b(?:common|nav|auth|audit|reports|tickets|groupSwaps|attendance|visits|errors|errorPage|dashboard|students|schedule|settings|notifications|calendar|profile|groups|reviews|imports|biometrics|checkIn|qr|roles|statuses)\.[a-zA-Z_]+(?:\.[a-zA-Z_]+)*\b/;
+  /\b(?:common|nav|auth|audit|reports|tickets|groupSwaps|attendance|visits|errors|errorPage|dashboard|students|schedule|settings|notifications|calendar|profile|groups|reviews|imports|biometrics|checkIn|qr|roles|statuses|guest|scan|location|start)\.[a-zA-Z_]+(?:\.[a-zA-Z_]+)*\b/;
 
 async function api<T>(
   path: string,
@@ -206,7 +206,16 @@ test.describe.serial('accessibility, layout, languages and security headers (Pha
     for (const locale of ['ar', 'en'] as const) {
       await page.goto('/login');
       await switchTo(page, locale);
-      for (const path of ['/login', '/signup', '/forgot-password', '/no-such-page']) {
+      for (const path of [
+        '/login',
+        '/signup',
+        '/forgot-password',
+        '/start',
+        '/guest',
+        '/check-in/NotARealToken0000000000',
+        '/check-in/NotARealToken0000000000/guest',
+        '/no-such-page',
+      ]) {
         const response = await page.goto(path);
         if (path === '/no-such-page') expect(response?.status()).toBe(404);
         await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');

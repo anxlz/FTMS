@@ -9,22 +9,16 @@ import { LanguageSwitcher } from '@/components/language-switcher';
 import { PasswordForm } from '@/components/password-form';
 import { apiFetch } from '@/lib/api';
 import { accessToken, requireUser } from '@/lib/auth/session';
-import { safeNext } from '@/lib/safe-next';
 import { BiometricDevices } from './biometric-devices';
+import { DeviceKeySetting } from './device-key-setting';
 import { CancelChangeButton, PhoneForm, ProfileChangeForm } from './student-profile-forms';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('profile'))('title') };
 }
 
-export default async function ProfilePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function ProfilePage() {
   const user = await requireUser();
-  // Back to a check-in after enabling biometrics on this device (§7.2).
-  const next = safeNext((await searchParams).next) ?? undefined;
   const t = await getTranslations();
   const format = await getFormatter();
   const faculty = user.facultyProfile;
@@ -43,8 +37,10 @@ export default async function ProfilePage({
   });
   const when = (iso: string) =>
     format.dateTime(new Date(iso), { dateStyle: 'medium', timeStyle: 'short' });
-  const devices = (credentials.ok ? credentials.data : []).map((c) => ({
+  const active = credentials.ok ? credentials.data : [];
+  const devices = active.map((c) => ({
     id: c.id,
+    kind: c.kind,
     name: c.name,
     added: when(c.createdAt),
     lastUsed: c.lastUsedAt ? when(c.lastUsedAt) : null,
@@ -186,18 +182,26 @@ export default async function ProfilePage({
         </div>
       </section>
 
-      <section className="card stack" id="biometrics" aria-labelledby="profile-biometrics">
-        <h2 id="profile-biometrics">{t('biometrics.profileTitle')}</h2>
-        <BiometricDevices
-          devices={devices}
-          biometricSession={user.sessionMethod === 'BIOMETRIC'}
-          next={next}
-        />
-      </section>
-
-      <section className="card" aria-labelledby="profile-security">
-        <h2 id="profile-security">{t('profile.changePassword')}</h2>
-        <PasswordForm requireCurrent successMessage={t('profile.passwordChanged')} />
+      <section className="card stack" id="security" aria-labelledby="profile-security">
+        <h2 id="profile-security">{t('profile.security')}</h2>
+        <div className="stack" id="biometrics">
+          <h3>{t('biometrics.profileTitle')}</h3>
+          <p className="alert alert-info">{t('biometrics.optionalNotice')}</p>
+          <DeviceKeySetting
+            registered={active
+              .filter((c) => c.kind === 'ANDROID_KEY')
+              .map((c) => ({ id: c.id, credentialId: c.credentialId }))}
+            biometricSession={user.sessionMethod === 'BIOMETRIC'}
+          />
+          <BiometricDevices
+            devices={devices}
+            biometricSession={user.sessionMethod === 'BIOMETRIC'}
+          />
+        </div>
+        <div className="stack">
+          <h3>{t('profile.changePassword')}</h3>
+          <PasswordForm requireCurrent successMessage={t('profile.passwordChanged')} />
+        </div>
       </section>
     </div>
   );

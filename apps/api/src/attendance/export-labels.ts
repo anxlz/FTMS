@@ -20,11 +20,11 @@ export interface ExportLabels {
     checkIn: string;
     minutesLate: string;
     source: string;
-    biometric: string;
     note: string;
   };
   status: Record<AttendanceStatus, string>;
-  source: Record<AttendanceSource, string>;
+  /** `GUEST_UNMATCHED`: a guest submission whose typed seat number matched nobody in the visit's groups. */
+  source: Record<AttendanceSource | 'GUEST_UNMATCHED', string>;
   yes: string;
   no: string;
 }
@@ -49,11 +49,16 @@ export const EXPORT_LABELS: Record<'ar' | 'en', ExportLabels> = {
       checkIn: 'وقت التسجيل',
       minutesLate: 'دقائق التأخير',
       source: 'المصدر',
-      biometric: 'تأكيد بالبصمة',
       note: 'ملاحظة',
     },
     status: { PRESENT: 'حاضر', LATE: 'متأخر', ABSENT: 'غائب' },
-    source: { QR: 'رمز QR', MANUAL: 'تصحيح يدوي', AUTOMATIC: 'تلقائي' },
+    source: {
+      QR: 'رمز QR',
+      MANUAL: 'تصحيح يدوي',
+      AUTOMATIC: 'تلقائي',
+      GUEST: 'نموذج الضيف (غير متحقق منه)',
+      GUEST_UNMATCHED: 'نموذج الضيف (لا يطابق طالبًا)',
+    },
     yes: 'نعم',
     no: 'لا',
   },
@@ -76,11 +81,16 @@ export const EXPORT_LABELS: Record<'ar' | 'en', ExportLabels> = {
       checkIn: 'Check-in time',
       minutesLate: 'Minutes late',
       source: 'Source',
-      biometric: 'Biometric',
       note: 'Note',
     },
     status: { PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent' },
-    source: { QR: 'QR code', MANUAL: 'Manual correction', AUTOMATIC: 'Automatic' },
+    source: {
+      QR: 'QR code',
+      MANUAL: 'Manual correction',
+      AUTOMATIC: 'Automatic',
+      GUEST: 'Guest form (not verified)',
+      GUEST_UNMATCHED: 'Guest form (no matching student)',
+    },
     yes: 'Yes',
     no: 'No',
   },

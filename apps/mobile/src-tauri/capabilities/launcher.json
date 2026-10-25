@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "launcher",
+  "description": "The bundled launcher page: it only checks the connection and opens the web app, so it gets no permissions.",
+  "windows": ["main"],
+  "permissions": []
+}

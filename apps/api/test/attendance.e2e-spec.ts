@@ -148,30 +148,6 @@ describe('Attendance: QR check-in, absences, corrections and dashboards (§7–�
     return device;
   }
 
-  async function checkInOptions(s: Student, token: string) {
-    const res = await http()
-      .post('/attendance/check-in/options')
-      .set(bearer(s.token))
-      .send({ token })
-      .expect(200);
-    return WebAuthnOptionsResponseSchema.parse(res.body);
-  }
-
-  /** The full §7.2 flow: a fresh biometric assertion for this visit, plus the location. */
-  async function confirmedCheckIn(
-    s: Student,
-    device: SoftAuthenticator,
-    token: string,
-    extra: Record<string, unknown> = { location: HERE },
-  ) {
-    const { challengeId, options } = await checkInOptions(s, token);
-    return checkIn(s, {
-      token,
-      biometric: { challengeId, response: device.assert(options) },
-      ...extra,
-    });
-  }
-
   const expectError = (res: request.Response, status: number, code: string) =>
     expect({ status: res.status, code: res.body?.code }).toEqual({ status, code });
 
@@ -241,7 +217,7 @@ describe('Attendance: QR check-in, absences, corrections and dashboards (§7–�
           closesAt: at('11:01').toISOString(),
         },
         existing: null,
-        requirements: { biometric: 'NOT_ENROLLED_ALLOWED', geolocation: 'REQUIRED' },
+        location: { radiusMeters: null, maxAccuracyMeters: null, areaEnforced: false },
         serverTime: at('09:30').toISOString(),
       });
       clock.set(at('10:59'));
@@ -637,236 +613,78 @@ describe('Attendance: QR check-in, absences, corrections and dashboards (§7–�
     });
   });
 
-  /* ─────────────────────────── §7.2 biometrics + geolocation ─────────────────────────── */
+  /* ─────────────────────────── §7.2 location (Phase 8) ─────────────────────────── */
 
-  describe('biometric confirmation at check-in (§7.2)', () => {
-    it('requires a fresh assertion and the location from a student with a registered device', async () => {
-      // Even where the fallback policy makes the location optional.
-      await prisma.trainingProgram.update({
-        where: { id: programId },
-        data: { geolocationPolicy: 'OPTIONAL' },
-      });
+  describe('attendance never requires biometrics (Phase 8)', () => {
+    it('works without biometric enrollment, with biometric sign-in enabled, and after it is disabled', async () => {
       const visit = await tenOClock();
-      const s = await studentIn(group.id);
-      const device = await enrollDevice(s);
       const token = qr.sign(visit.id);
-      clock.set(at('10:05'));
-
-      expect((await contextOf(s, token)).requirements).toEqual({
-        biometric: 'REQUIRED',
-        geolocation: 'REQUIRED',
-      });
-      expectError(await checkIn(s, { token, location: HERE }), 400, 'BIOMETRIC_REQUIRED');
-      expectError(await confirmedCheckIn(s, device, token, {}), 400, 'GEOLOCATION_REQUIRED');
-
-      const options = await checkInOptions(s, token);
-      expect(options.options).toMatchObject({
-        userVerification: 'required',
-        allowCredentials: [expect.objectContaining({ id: device.id })],
-      });
-      const res = await checkIn(s, {
-        token,
-        biometric: { challengeId: options.challengeId, response: device.assert(options.options) },
-        location: HERE,
-      });
-      expect(res.status).toBe(201);
-      expect(CheckInResultSchema.parse(res.body).record).toMatchObject({
-        status: 'PRESENT',
-        biometricVerified: true,
-        location: { latitude: HERE.latitude, longitude: HERE.longitude, accuracyMeters: 15 },
-      });
-      const [row] = await recordsOf(visit.id);
+      const never = await studentIn(group.id);
+      const enabled = await studentIn(group.id);
+      const disabled = await studentIn(group.id);
+      await enrollDevice(enabled);
+      await enrollDevice(disabled);
       const credential = await prisma.webAuthnCredential.findFirstOrThrow({
-        where: { credentialId: device.id },
-      });
-      expect(row).toMatchObject({ credentialId: credential.id, biometricVerified: true });
-      expect(credential.lastUsedAt?.toISOString()).toBe(at('10:05').toISOString());
-    });
-
-    it('refuses assertions that are stale, replayed, for another visit, or from another device', async () => {
-      const [visitA, visitB] = [await tenOClock(), await tenOClock({ title: 'Second' })];
-      const s = await studentIn(group.id);
-      const t = await studentIn(group.id);
-      const device = await enrollDevice(s);
-      const otherDevice = await enrollDevice(t);
-      const tokenA = qr.sign(visitA.id);
-      const tokenB = qr.sign(visitB.id);
-      clock.set(at('10:05'));
-
-      const failed = (res: request.Response) => expectError(res, 401, 'BIOMETRIC_FAILED');
-
-      // A challenge issued for visit A, spent on visit B.
-      let o = await checkInOptions(s, tokenA);
-      failed(
-        await checkIn(s, {
-          token: tokenB,
-          biometric: { challengeId: o.challengeId, response: device.assert(o.options) },
-          location: HERE,
-        }),
-      );
-      // A sign-in challenge is not a check-in challenge.
-      const loginOptions = WebAuthnOptionsResponseSchema.parse(
-        (await http().post('/auth/biometric/login/options').expect(200)).body,
-      );
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: {
-            challengeId: loginOptions.challengeId,
-            response: device.assert(loginOptions.options),
-          },
-          location: HERE,
-        }),
-      );
-      // Another student's challenge.
-      o = await checkInOptions(t, tokenA);
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: { challengeId: o.challengeId, response: device.assert(o.options) },
-          location: HERE,
-        }),
-      );
-      // Another student's registered device.
-      o = await checkInOptions(s, tokenA);
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: { challengeId: o.challengeId, response: otherDevice.assert(o.options) },
-          location: HERE,
-        }),
-      );
-      // A forged signature — and the challenge is spent by the failed attempt.
-      o = await checkInOptions(s, tokenA);
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: {
-            challengeId: o.challengeId,
-            response: device.assert(o.options, { forgeSignature: true }),
-          },
-          location: HERE,
-        }),
-      );
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: { challengeId: o.challengeId, response: device.assert(o.options) },
-          location: HERE,
-        }),
-      );
-      // Without user verification on the device.
-      o = await checkInOptions(s, tokenA);
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: {
-            challengeId: o.challengeId,
-            response: device.assert(o.options, { userVerified: false }),
-          },
-          location: HERE,
-        }),
-      );
-      // Stale: answered after the challenge expired.
-      o = await checkInOptions(s, tokenA);
-      clock.set(at('10:11'));
-      failed(
-        await checkIn(s, {
-          token: tokenA,
-          biometric: { challengeId: o.challengeId, response: device.assert(o.options) },
-          location: HERE,
-        }),
-      );
-      // A biometric sign-in session is not a confirmation of this check-in.
-      const signIn = WebAuthnOptionsResponseSchema.parse(
-        (await http().post('/auth/biometric/login/options').expect(200)).body,
-      );
-      const session = await http()
-        .post('/auth/biometric/login')
-        .send({ challengeId: signIn.challengeId, response: device.assert(signIn.options) })
-        .expect(200);
-      expectError(
-        await http()
-          .post('/attendance/check-in')
-          .set(bearer(session.body.accessToken as string))
-          .send({ token: tokenA, location: HERE }),
-        400,
-        'BIOMETRIC_REQUIRED',
-      );
-      expect(await prisma.attendanceRecord.count()).toBe(0);
-
-      // A proper confirmation still works.
-      expect((await confirmedCheckIn(s, device, tokenA)).status).toBe(201);
-    });
-
-    it('returns a student whose device was revoked to the fallback flow', async () => {
-      const visit = await tenOClock();
-      const s = await studentIn(group.id);
-      await enrollDevice(s);
-      const credential = await prisma.webAuthnCredential.findFirstOrThrow({
-        where: { userId: s.user.id },
+        where: { userId: disabled.user.id },
       });
       await http()
         .delete(`/auth/biometric/credentials/${credential.id}`)
-        .set(bearer(s.token))
+        .set(bearer(disabled.token))
         .send({})
         .expect(204);
       clock.set(at('10:00'));
-      const token = qr.sign(visit.id);
-      expect((await contextOf(s, token)).requirements.biometric).toBe('NOT_ENROLLED_ALLOWED');
-      const res = await checkIn(s, { token, location: HERE }).expect(201);
+      for (const s of [never, enabled, disabled]) {
+        // Same context and the same single request for everyone: no biometric step.
+        const context = await contextOf(s, token);
+        expect(Object.keys(context).sort()).toEqual([
+          'existing',
+          'location',
+          'serverTime',
+          'visit',
+          'window',
+        ]);
+        const res = await checkIn(s, { token, location: HERE }).expect(201);
+        expect(res.body.record).toMatchObject({ status: 'PRESENT', biometricVerified: false });
+      }
+      expect(await recordsOf(visit.id)).toHaveLength(3);
+      // The Phase 4 biometric check-in step no longer exists.
+      expect(
+        (await http().post('/attendance/check-in/options').set(bearer(never.token)).send({ token }))
+          .status,
+      ).toBe(404);
+      expect(await prisma.webAuthnChallenge.count({ where: { purpose: 'CHECK_IN' } })).toBe(0);
+    });
+
+    it('ignores a biometric payload sent with a check-in', async () => {
+      const visit = await tenOClock();
+      const s = await studentIn(group.id);
+      clock.set(at('10:05'));
+      const res = await checkIn(s, {
+        token: qr.sign(visit.id),
+        location: HERE,
+        biometric: { challengeId: randomUUID(), response: { id: 'x' } },
+        biometricVerified: true,
+      }).expect(201);
       expect(res.body.record).toMatchObject({ biometricVerified: false });
-    });
-
-    it('fallback "allow": a student without a device checks in, marked not biometrically confirmed', async () => {
-      const visit = await tenOClock();
-      const s = await studentIn(group.id);
-      clock.set(at('10:00'));
-      const token = qr.sign(visit.id);
-      expectError(
-        await http().post('/attendance/check-in/options').set(bearer(s.token)).send({ token }),
-        409,
-        'BIOMETRIC_NOT_ENROLLED',
-      );
-      const res = await checkIn(s, { token, location: HERE }).expect(201);
-      expect(res.body.record).toMatchObject({ status: 'PRESENT', biometricVerified: false });
-      const row = (await tableOf(visit.id)).rows.find((r) => r.student.id === s.recordId)!;
-      expect(row.record).toMatchObject({ biometricVerified: false });
-    });
-
-    it('fallback "require": a student without a device is refused until biometrics are enabled', async () => {
-      await http()
-        .patch('/program')
-        .set(bearer(directorToken))
-        .send({
-          checkInPolicy: { biometricFallback: 'REQUIRE_BIOMETRIC', geolocation: 'REQUIRED' },
-        })
-        .expect(200);
-      const visit = await tenOClock();
-      const s = await studentIn(group.id);
-      const token = qr.sign(visit.id);
-      clock.set(at('10:00'));
-      expect((await contextOf(s, token)).requirements.biometric).toBe('NOT_ENROLLED_BLOCKED');
-      expectError(await checkIn(s, { token, location: HERE }), 409, 'BIOMETRIC_NOT_ENROLLED');
-      expect(await recordsOf(visit.id)).toHaveLength(0);
-
-      const device = await enrollDevice(s);
-      expect((await confirmedCheckIn(s, device, token)).status).toBe(201);
-    });
-
-    it('only the Training Director sets the check-in policy', async () => {
-      const res = await http()
-        .patch('/program')
-        .set(bearer(facultyToken))
-        .send({
-          checkInPolicy: { biometricFallback: 'ALLOW_UNVERIFIED', geolocation: 'OPTIONAL' },
-        });
-      expectError(res, 403, 'FORBIDDEN');
     });
   });
 
-  describe('geolocation at check-in (§7.2)', () => {
-    it('"required": refuses a check-in without a location reading', async () => {
+  describe('location at check-in (§7.2 as revised in Phase 8)', () => {
+    const SITE = { latitude: 30.0444, longitude: 31.2357 };
+    /** ~110 m north of the site. */
+    const NEAR = { latitude: 30.0454, longitude: 31.2357, accuracy: 20 };
+    /** ~2.2 km north of the site. */
+    const FAR = { latitude: 30.0644, longitude: 31.2357, accuracy: 20 };
+
+    async function setPolicy(radiusMeters: number | null, maxAccuracyMeters: number | null) {
+      await http()
+        .patch('/program')
+        .set(bearer(directorToken))
+        .send({ checkInPolicy: { radiusMeters, maxAccuracyMeters } })
+        .expect(200);
+    }
+
+    it('always requires a valid reading', async () => {
       const visit = await tenOClock();
       const s = await studentIn(group.id);
       clock.set(at('10:00'));
@@ -883,37 +701,103 @@ describe('Attendance: QR check-in, absences, corrections and dashboards (§7–�
       await checkIn(s, { token, location: { latitude: 30.1, longitude: 31.3 } }).expect(201);
     });
 
-    it('"optional": a student without a device may check in without a location', async () => {
-      await prisma.trainingProgram.update({
-        where: { id: programId },
-        data: { geolocationPolicy: 'OPTIONAL' },
+    it('refuses readings outside the permitted area, and imprecise ones', async () => {
+      await setPolicy(300, 50);
+      const visit = await tenOClock({ coordinates: SITE });
+      const s = await studentIn(group.id);
+      clock.set(at('10:00'));
+      const token = qr.sign(visit.id);
+      expect((await contextOf(s, token)).location).toEqual({
+        radiusMeters: 300,
+        maxAccuracyMeters: 50,
+        areaEnforced: true,
       });
+      const outside = await checkIn(s, { token, location: FAR });
+      expectError(outside, 422, 'LOCATION_OUTSIDE_AREA');
+      expect(outside.body.details).toEqual({ location: ['LOCATION_OUTSIDE_AREA'] });
+      expectError(
+        await checkIn(s, { token, location: { ...NEAR, accuracy: 51 } }),
+        422,
+        'LOCATION_INACCURATE',
+      );
+      expectError(
+        await checkIn(s, {
+          token,
+          location: { latitude: NEAR.latitude, longitude: NEAR.longitude },
+        }),
+        422,
+        'LOCATION_INACCURATE',
+      );
+      // A location-valid flag from the client means nothing.
+      expectError(
+        await checkIn(s, { token, location: FAR, locationValid: true, distanceMeters: 0 }),
+        422,
+        'LOCATION_OUTSIDE_AREA',
+      );
+      expect(await recordsOf(visit.id)).toHaveLength(0);
+      const ok = await checkIn(s, { token, location: NEAR }).expect(201);
+      expect(ok.body.record.location.distanceMeters).toBe(distanceMeters(NEAR, SITE));
+    });
+
+    it('checks only the accuracy for a visit without coordinates (the area cannot be known)', async () => {
+      await setPolicy(300, 50);
       const visit = await tenOClock();
       const s = await studentIn(group.id);
       clock.set(at('10:00'));
       const token = qr.sign(visit.id);
-      expect((await contextOf(s, token)).requirements.geolocation).toBe('OPTIONAL');
-      const res = await checkIn(s, { token }).expect(201);
-      expect(res.body.record).toMatchObject({ location: null });
+      expect((await contextOf(s, token)).location.areaEnforced).toBe(false);
+      expectError(
+        await checkIn(s, { token, location: { ...FAR, accuracy: 80 } }),
+        422,
+        'LOCATION_INACCURATE',
+      );
+      const res = await checkIn(s, { token, location: FAR }).expect(201);
+      expect(res.body.record.location).toMatchObject({ distanceMeters: null });
+    });
+
+    it('only holders of attendance.settings.defaults set the location policy', async () => {
+      expectError(
+        await http()
+          .patch('/program')
+          .set(bearer(facultyToken))
+          .send({ checkInPolicy: { radiusMeters: 100, maxAccuracyMeters: null } }),
+        403,
+        'FORBIDDEN',
+      );
+      expectError(
+        await http()
+          .patch('/program')
+          .set(bearer(directorToken))
+          .send({ checkInPolicy: { radiusMeters: 5, maxAccuracyMeters: null } }),
+        400,
+        'VALIDATION_FAILED',
+      );
+      await setPolicy(250, 40);
+      const program = await prisma.trainingProgram.findUniqueOrThrow({ where: { id: programId } });
+      expect([program.locationRadiusMeters, program.locationMaxAccuracyMeters]).toEqual([250, 40]);
+      const history = await prisma.auditLog.findFirstOrThrow({
+        where: { action: 'program.updated' },
+        orderBy: { id: 'desc' },
+      });
+      expect(history.after).toMatchObject({
+        checkInPolicy: { radiusMeters: 250, maxAccuracyMeters: 40 },
+      });
     });
 
     it('stores the reading with the record and shows it to faculty (§10.3)', async () => {
-      const site = { latitude: 30.0444, longitude: 31.2357 };
-      const visit = await tenOClock({ coordinates: site });
+      const visit = await tenOClock({ coordinates: SITE });
       const s = await studentIn(group.id);
-      const device = await enrollDevice(s);
       clock.set(at('10:00'));
       const reading = { latitude: 30.045, longitude: 31.2365, accuracy: 12 };
-      const res = await confirmedCheckIn(s, device, qr.sign(visit.id), { location: reading });
-      expect(res.status).toBe(201);
+      await checkIn(s, { token: qr.sign(visit.id), location: reading }).expect(201);
 
       const table = await tableOf(visit.id);
-      expect(table.visit).toMatchObject(site);
+      expect(table.visit).toMatchObject(SITE);
       const row = table.rows.find((r) => r.student.id === s.recordId)!;
-      const expected = distanceMeters(reading, site);
+      const expected = distanceMeters(reading, SITE);
       expect(expected).toBeGreaterThan(50);
       expect(row.record).toMatchObject({
-        biometricVerified: true,
+        biometricVerified: false,
         location: { latitude: 30.045, longitude: 31.2365, accuracyMeters: 12 },
       });
       expect(row.record!.location!.distanceMeters).toBeCloseTo(expected, 3);

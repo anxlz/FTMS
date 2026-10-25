@@ -21,6 +21,7 @@ export function auditResourceHref(resource: {
     case 'visit':
       return `/visits/${id}`;
     case 'attendance':
+    case 'guest_check_in':
       return resource.visitId ? `/visits/${encodeURIComponent(resource.visitId)}/attendance` : null;
     case 'schedule':
       return `/schedule/${id}`;

@@ -6,12 +6,15 @@ import pg from 'pg';
 import { ADMIN_EMAIL, chooseEnglish, codeFor, input, resetAdminPassword, signIn } from './helpers';
 
 /**
- * Phase 4 in a real browser (Chromium with a virtual platform authenticator):
- * a student enables biometric sign-in, scans the visit's attendance link while
- * signed out, signs in, confirms with "biometrics" and the device location,
- * and is recorded present; faculty see the record with its location, correct
- * another student, and download the report. Runs after the scheduling spec
- * (see playwright.config.ts); creates the program itself when run alone.
+ * Phase 4 as revised in Phase 8, in a real browser: a student scans the visit's
+ * attendance link while signed out, chooses "Log In", signs in with a password
+ * and checks in with the device location only — no biometric step, and no
+ * biometric login enabled. A guest (no account) chooses "Continue as Guest" and
+ * submits a typed name and seat number with the location. Biometric login stays
+ * an optional sign-in convenience (Chromium's virtual platform authenticator).
+ * Faculty see the records, the guest submissions, correct another student, and
+ * download the report. Runs after the scheduling spec (see playwright.config.ts);
+ * creates the program itself when run alone.
  */
 
 const API = 'http://localhost:4100';
@@ -21,6 +24,7 @@ const run = Date.now().toString(36).toUpperCase();
 const GROUP = `P4 Group ${run}`;
 const STUDENT = { seat: `P4S-${run}`, email: `p4.s.${run.toLowerCase()}@agr.asu.edu.eg` };
 const ABSENT = { seat: `P4X-${run}`, name: 'ياسمين طارق عبد الله' };
+const GUEST = { seat: `P4G-${run}`, name: 'كريم أشرف سامي' };
 const VISIT_TITLE = `Orchard visit ${run}`;
 const SITE = { latitude: 30.0444, longitude: 31.2357 };
 const HERE = { latitude: 30.0451, longitude: 31.2362, accuracy: 15 };
@@ -33,7 +37,10 @@ function uuidv7(): string {
 
 let visitId = '';
 
-/** A group with the student who will sign in and one who never checks in; a visit that started 2 minutes ago. */
+/**
+ * A group with the student who will sign in, one who never checks in and one who
+ * attends as a guest; a visit that started 2 minutes ago.
+ */
 async function seed(): Promise<void> {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -59,6 +66,7 @@ async function seed(): Promise<void> {
     for (const [seat, name, email] of [
       [STUDENT.seat, 'نور حسام الدين مصطفى', STUDENT.email],
       [ABSENT.seat, ABSENT.name, null],
+      [GUEST.seat, GUEST.name, null],
     ] as const) {
       const id = uuidv7();
       await client.query(
@@ -127,9 +135,11 @@ const signOut = async (page: Page) => {
   await expect(page).toHaveURL(/\/login$/);
 };
 
-test.describe.serial('attendance with biometrics and location (Phase 4)', () => {
+test.describe
+  .serial('attendance with QR and location, signed in or as a guest (Phase 4, 8)', () => {
   let admin: Page;
   let student: Page;
+  let guest: Page;
   let link: string;
 
   test.beforeAll(async ({ browser }) => {
@@ -148,6 +158,13 @@ test.describe.serial('attendance with biometrics and location (Phase 4)', () => 
     student = await studentContext.newPage();
     student.on('dialog', (dialog) => void dialog.accept());
     await addPlatformAuthenticator(studentContext, student);
+
+    // No account, no sign-in: only the location permission.
+    const guestContext = await browser.newContext({
+      permissions: ['geolocation'],
+      geolocation: HERE,
+    });
+    guest = await guestContext.newPage();
 
     // First sign-in by emailed code, then a password (§4.3).
     await student.goto('/login');
@@ -178,30 +195,18 @@ test.describe.serial('attendance with biometrics and location (Phase 4)', () => 
     await expect(admin.getByRole('button', { name: 'Print' })).toBeVisible();
   });
 
-  test('a student enables biometric sign-in on the device after a password sign-in', async () => {
+  test('a scanned link offers Log In or Continue as Guest; a signed-in check-in needs no biometrics', async () => {
+    // Biometric login was never turned on for this account.
     await student.goto('/profile');
-    await expect(student.getByRole('heading', { name: 'Biometric sign-in' })).toBeVisible();
     await expect(
-      student.getByText('Biometric sign-in is not enabled on any device.'),
+      student.getByText('Biometric login is not turned on for any device.'),
     ).toBeVisible();
-    await input(student, 'name').fill('Test phone');
-    await student.getByRole('button', { name: 'Enable biometric sign-in' }).click();
-    await expect(student.getByText('Biometric sign-in is enabled on this device.')).toBeVisible();
-    await expect(student.locator('.device-list li', { hasText: 'Test phone' })).toBeVisible();
-  });
-
-  test('biometric sign-in works without a password', async () => {
     await signOut(student);
-    await student.getByRole('button', { name: 'Sign in with fingerprint or face' }).click();
-    await expect(student).toHaveURL(/\/dashboard$/);
-    // A biometric session cannot enroll further devices.
-    await student.goto('/profile');
-    await expect(student.getByText(/You signed in with biometrics/)).toBeVisible();
-  });
 
-  test('a scanned link leads through sign-in to the check-in, confirmed with biometrics and location', async () => {
-    await signOut(student);
     await student.goto(link);
+    await expect(student.getByRole('link', { name: 'Log In' })).toBeVisible();
+    await expect(student.getByRole('link', { name: 'Continue as Guest' })).toBeVisible();
+    await student.getByRole('link', { name: 'Log In' }).click();
     await expect(student).toHaveURL(/\/login\?next=%2Fcheck-in%2F/);
     await expect(student.getByText(/Sign in to record your attendance/)).toBeVisible();
     await input(student, 'identifier').fill(STUDENT.seat);
@@ -210,12 +215,12 @@ test.describe.serial('attendance with biometrics and location (Phase 4)', () => 
     await expect(student).toHaveURL(link);
 
     await expect(student.getByRole('heading', { name: VISIT_TITLE })).toBeVisible();
-    await expect(student.getByText(/You will confirm with your fingerprint or face/)).toBeVisible();
-    await student.getByRole('button', { name: 'Confirm with biometrics and check in' }).click();
+    await expect(student.getByText(/Your current location is required/)).toBeVisible();
+    await expect(student.getByText(/biometric|fingerprint/i)).toHaveCount(0);
+    await student.getByRole('button', { name: 'Check in', exact: true }).click();
     const result = student.locator('.check-in-result');
     await expect(result).toContainText('Attendance recorded');
     await expect(result).toContainText('Present');
-    await expect(result).toContainText('Confirmed with biometrics.');
     await expect(result).toContainText('Location shared.');
 
     // A second scan shows the existing record; nothing new is created.
@@ -223,38 +228,106 @@ test.describe.serial('attendance with biometrics and location (Phase 4)', () => 
     await expect(student.locator('.check-in-result')).toContainText(
       'Your attendance is already recorded',
     );
+    await expect(student.getByRole('button', { name: 'Check in', exact: true })).toHaveCount(0);
+  });
+
+  test('a guest records attendance with a typed name and seat number, not verified', async () => {
+    await guest.goto('/login');
+    await chooseEnglish(guest);
+    await guest.goto(link);
+    await guest.getByRole('link', { name: 'Continue as Guest' }).click();
+    await expect(guest).toHaveURL(/\/check-in\/[A-Za-z0-9_-]+\/guest$/);
+    await expect(guest.getByRole('heading', { name: VISIT_TITLE })).toBeVisible();
+    await expect(guest.getByText(/not verified/).first()).toBeVisible();
+
+    // The form is checked before anything is sent.
+    await input(guest, 'fullName').fill(GUEST.name);
+    await input(guest, 'seatNumber').fill(GUEST.seat);
+    await guest.getByRole('button', { name: 'Submit attendance' }).click();
+    const receipt = guest.locator('.check-in-result');
+    await expect(receipt).toContainText('Attendance submission received');
+    await expect(receipt).toContainText('Present');
+    await expect(receipt).toContainText(/Reference: [0-9A-F]{8}/);
+    // A second, unmatched submission — from the landing screen and a pasted link —
+    // gets the same receipt: a guest learns nothing about whether a seat number
+    // belongs to anyone.
+    await guest.goto('/start');
+    await expect(guest.getByRole('link', { name: 'Log In' })).toBeVisible();
+    await guest.getByRole('link', { name: 'Continue as Guest' }).click();
+    await expect(guest).toHaveURL(/\/guest$/);
+    await input(guest, 'link').fill(link);
+    await guest.getByRole('button', { name: 'Open', exact: true }).click();
+    await expect(guest).toHaveURL(/\/check-in\/[A-Za-z0-9_-]+\/guest$/);
+    await input(guest, 'fullName').fill('Somebody Else');
+    await input(guest, 'seatNumber').fill(`NOPE-${run}`);
+    await guest.getByRole('button', { name: 'Submit attendance' }).click();
+    const second = guest.locator('.check-in-result');
+    await expect(second).toContainText('Attendance submission received');
+    await expect(second).toContainText('Present');
+  });
+
+  test('biometric login is optional: turned on after a password sign-in, then used to sign in', async () => {
+    await student.goto('/profile');
+    await expect(student.getByRole('heading', { name: 'Biometric login' })).toBeVisible();
     await expect(
-      student.getByRole('button', { name: 'Confirm with biometrics and check in' }),
-    ).toHaveCount(0);
+      student.getByText(
+        'Biometric login is an optional convenience feature for signing in. It is not required for attendance.',
+      ),
+    ).toBeVisible();
+    await input(student, 'name').fill('Test phone');
+    await student.getByRole('button', { name: 'Turn on biometric login' }).click();
+    await expect(student.getByText('Biometric login is on for this device.')).toBeVisible();
+    await expect(student.locator('.device-list li', { hasText: 'Test phone' })).toBeVisible();
+
+    await signOut(student);
+    await student.getByRole('button', { name: 'Sign in with fingerprint or face' }).click();
+    await expect(student).toHaveURL(/\/dashboard$/);
+    // A biometric session cannot enroll further devices.
+    await student.goto('/profile');
+    await expect(student.getByText(/You signed in with biometrics/)).toBeVisible();
   });
 
   test('faculty see the record with its location, and correct a student who did not check in', async () => {
     await admin.goto(`/visits/${visitId}/attendance`);
     await expect(admin.getByRole('heading', { name: VISIT_TITLE })).toBeVisible();
-    const row = admin.locator('tbody tr', { hasText: STUDENT.seat });
+    const row = admin.locator('.attendance-table tbody tr', { hasText: STUDENT.seat });
     await expect(row).toContainText('Present');
     await expect(row).toContainText('QR check-in');
-    await expect(row).toContainText('Biometric confirmed');
     await expect(row.getByRole('link', { name: '30.04510, 31.23620' })).toBeVisible();
     await expect(row).toContainText('±15 m');
     await expect(row).toContainText('m from the site');
 
-    const other = admin.locator('tbody tr', { hasText: ABSENT.seat });
+    const other = admin.locator('.attendance-table tbody tr', { hasText: ABSENT.seat });
     await expect(other).toContainText('Not recorded');
     await other.getByText('Record attendance').click();
     await other.locator('select[name="status"]').selectOption('LATE');
     await other.locator('input[name="minutesLate"]').fill('5');
     await other.locator('textarea[name="reason"]').fill('Arrived with the second bus');
     await other.getByRole('button', { name: 'Save correction' }).click();
-    const corrected = admin.locator('tbody tr', { hasText: ABSENT.seat });
+    const corrected = admin.locator('.attendance-table tbody tr', { hasText: ABSENT.seat });
     await expect(corrected).toContainText('Late (5 minutes)');
     await expect(corrected).toContainText('Faculty correction');
     await expect(corrected).toContainText('Arrived with the second bus');
 
+    // The guest's submission became that student's record, marked as such.
+    const viaGuest = admin.locator('.attendance-table tbody tr', { hasText: GUEST.seat });
+    await expect(viaGuest).toContainText('Present');
+    await expect(viaGuest).toContainText('Guest form');
+    const submissions = admin.locator('section', {
+      has: admin.getByRole('heading', { name: 'Guest submissions' }),
+    });
+    await expect(submissions.locator('tbody tr')).toHaveCount(2);
+    await expect(submissions.locator('tbody tr', { hasText: GUEST.seat })).toContainText(
+      'Recorded as the attendance of',
+    );
+    await expect(submissions.locator('tbody tr', { hasText: `NOPE-${run}` })).toContainText(
+      'No student of this visit has this seat number',
+    );
+
     // Filters run on the server.
     await admin.locator('select[name="status"]').first().selectOption('LATE');
     await admin.getByRole('button', { name: 'Filter' }).click();
-    await expect(admin.locator('tbody tr')).toHaveCount(1);
+    await expect(admin.locator('.attendance-table tbody tr')).toHaveCount(1);
   });
 
   test('the report downloads as CSV with the same records', async () => {
@@ -270,6 +343,8 @@ test.describe.serial('attendance with biometrics and location (Phase 4)', () => 
     expect(text.charCodeAt(0)).toBe(0xfeff);
     expect(text).toContain(`${STUDENT.seat},Present`);
     expect(text).toContain(`${ABSENT.seat},Late`);
+    expect(text).toContain(`${GUEST.seat},Present`);
+    expect(text).toContain('Guest form');
     expect(text).toContain(ABSENT.name);
   });
 

@@ -15,6 +15,7 @@ const TABLES = [
   'ticket_status_changes',
   'ticket_messages',
   'support_tickets',
+  'guest_check_ins',
   'attendance_records',
   'webauthn_challenges',
   'webauthn_credentials',

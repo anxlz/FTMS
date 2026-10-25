@@ -17,19 +17,37 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Where a scanned attendance QR code lands (§7.2). The code only names the
- * visit; signing in, the group, the time window, biometrics and location are
- * all checked by the API when the student confirms.
+ * Where a scanned attendance QR code lands (§7.2, Phase 8). The code only names
+ * the visit. Signed out: choose to sign in or to continue as a guest. Signed in:
+ * the group, the time window and the location are checked by the API when the
+ * student confirms. Biometrics are never part of attendance.
  */
 export default async function CheckInPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const here = `/check-in/${encodeURIComponent(token)}`;
   const user = await currentUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(here)}`);
+  const t = await getTranslations('checkIn');
+  if (!user) {
+    return (
+      <AuthCard title={t('title')} intro={t('chooseIntro')}>
+        <div className="stack">
+          <Link
+            href={`/login?next=${encodeURIComponent(here)}`}
+            className="btn btn-primary btn-large"
+          >
+            {t('logIn')}
+          </Link>
+          <Link href={`${here}/guest`} className="btn btn-secondary btn-large">
+            {t('continueAsGuest')}
+          </Link>
+          <p className="muted small">{t('guestNote')}</p>
+        </div>
+      </AuthCard>
+    );
+  }
   if (user.passwordSetupRequired || user.status === 'PENDING_VERIFICATION') {
     redirect(homeFor(user));
   }
-  const t = await getTranslations('checkIn');
 
   if (user.role !== 'STUDENT') {
     return (
@@ -78,7 +96,6 @@ export default async function CheckInPage({ params }: { params: Promise<{ token:
           closesAt: clock(new Date(Date.parse(c.window.closesAt) - 60_000).toISOString()),
           serverTime: clock(c.serverTime),
         }}
-        enableHref={`/profile?next=${encodeURIComponent(here)}#biometrics`}
       />
       <p>
         <Link href="/dashboard">{t('toDashboard')}</Link>

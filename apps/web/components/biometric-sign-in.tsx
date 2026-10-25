@@ -7,20 +7,23 @@ import { biometricLoginAction, biometricLoginOptionsAction } from '@/lib/auth/ac
 import { useWebAuthnSupport } from '@/lib/use-webauthn';
 import { ceremonyErrorCode } from '@/lib/device';
 import { type FormState } from '@/lib/forms';
+import { useInApp } from '@/lib/use-in-app';
 import { FormError } from './form-controls';
 
 /**
  * "Sign in with biometrics" (§4.5): the device's passkey answers a server
  * challenge after its own fingerprint or face check. Shown only where the
- * browser supports WebAuthn; password and email-code sign-in always remain.
+ * browser supports WebAuthn (in the Android app, DeviceKeySignIn takes its
+ * place); password and email-code sign-in always remain.
  */
 export function BiometricSignIn({ next }: { next?: string }) {
   const t = useTranslations('biometrics');
   const supported = useWebAuthnSupport();
+  const app = useInApp();
   const [state, setState] = useState<FormState>({ status: 'idle' });
   const [pending, startTransition] = useTransition();
 
-  if (!supported) return null;
+  if (!supported || app !== false) return null;
 
   const signIn = () =>
     startTransition(async () => {

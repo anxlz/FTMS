@@ -25,8 +25,10 @@ Applied in order by `pnpm db:deploy` (`prisma migrate deploy`, using `DIRECT_URL
 - `20261020182827_scheduling_visits_notifications`
 - `20261021041241_attendance_biometrics`
 - `20261024210829_tickets_group_swaps`
+- `20261025160000_phase8_enum_values`
+- `20261025160100_phase8_guest_attendance_device_keys`
 
-## Tables (30)
+## Tables (31)
 
 - [`users`](#users) — User
 - [`student_profiles`](#student_profiles) — StudentProfile
@@ -52,6 +54,7 @@ Applied in order by `pnpm db:deploy` (`prisma migrate deploy`, using `DIRECT_URL
 - [`webauthn_credentials`](#webauthn_credentials) — WebAuthnCredential
 - [`webauthn_challenges`](#webauthn_challenges) — WebAuthnChallenge
 - [`attendance_records`](#attendance_records) — AttendanceRecord
+- [`guest_check_ins`](#guest_check_ins) — GuestCheckIn
 - [`support_tickets`](#support_tickets) — SupportTicket
 - [`ticket_messages`](#ticket_messages) — TicketMessage
 - [`ticket_status_changes`](#ticket_status_changes) — TicketStatusChange
@@ -458,23 +461,23 @@ Constraints and rules:
 
 Prisma model `TrainingProgram`. Training program settings (§6.1, §8.1, §11). Exactly one program is current (partial unique index). Defaults (12 weeks, 2 absences, 15/15/60 minutes) are only pre-filled by the settings form — every value here is configurable. Timing values are copied into each visit when it is created (§8.1).
 
-| Column                    | Type                   | Null | Key / default              | Notes                                                                |
-| ------------------------- | ---------------------- | ---- | -------------------------- | -------------------------------------------------------------------- |
-| `id`                      | Uuid                   |      | PK, default `uuid(7)`      |                                                                      |
-| `name`                    | VarChar(200)           |      |                            |                                                                      |
-| `start_date`              | Date                   |      |                            |                                                                      |
-| `duration_weeks`          | Int                    |      |                            |                                                                      |
-| `time_zone`               | VarChar(64)            |      | default `"Africa/Cairo"`   | IANA zone of every wall-clock date/time in the program (§16.2).      |
-| `check_in_opens_minutes`  | Int                    |      |                            |                                                                      |
-| `grace_minutes`           | Int                    |      |                            |                                                                      |
-| `check_in_closes_minutes` | Int                    |      |                            |                                                                      |
-| `allowed_absences`        | Int                    |      |                            |                                                                      |
-| `biometric_fallback`      | enum BiometricFallback |      | default `ALLOW_UNVERIFIED` | §7.2 fallback for students without an enrolled biometric credential. |
-| `geolocation_policy`      | enum GeolocationPolicy |      | default `REQUIRED`         |                                                                      |
-| `is_current`              | Boolean                |      | default `true`             |                                                                      |
-| `created_by_id`           | Uuid                   | yes  |                            |                                                                      |
-| `created_at`              | Timestamptz(3)         |      | default `now()`            |                                                                      |
-| `updated_at`              | Timestamptz(3)         |      | set on update              |                                                                      |
+| Column                         | Type           | Null | Key / default            | Notes                                                                                                                                               |
+| ------------------------------ | -------------- | ---- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                           | Uuid           |      | PK, default `uuid(7)`    |                                                                                                                                                     |
+| `name`                         | VarChar(200)   |      |                          |                                                                                                                                                     |
+| `start_date`                   | Date           |      |                          |                                                                                                                                                     |
+| `duration_weeks`               | Int            |      |                          |                                                                                                                                                     |
+| `time_zone`                    | VarChar(64)    |      | default `"Africa/Cairo"` | IANA zone of every wall-clock date/time in the program (§16.2).                                                                                     |
+| `check_in_opens_minutes`       | Int            |      |                          |                                                                                                                                                     |
+| `grace_minutes`                | Int            |      |                          |                                                                                                                                                     |
+| `check_in_closes_minutes`      | Int            |      |                          |                                                                                                                                                     |
+| `allowed_absences`             | Int            |      |                          |                                                                                                                                                     |
+| `location_radius_meters`       | Int            | yes  |                          | Phase 8 check-in location policy. A reading is always required; one farther than this from the visit's coordinates is refused. NULL: no area limit. |
+| `location_max_accuracy_meters` | Int            | yes  |                          | Readings whose reported accuracy is worse than this are refused. NULL: no limit.                                                                    |
+| `is_current`                   | Boolean        |      | default `true`           |                                                                                                                                                     |
+| `created_by_id`                | Uuid           | yes  |                          |                                                                                                                                                     |
+| `created_at`                   | Timestamptz(3) |      | default `now()`          |                                                                                                                                                     |
+| `updated_at`                   | Timestamptz(3) |      | set on update            |                                                                                                                                                     |
 
 Foreign keys:
 
@@ -486,6 +489,7 @@ Constraints and rules:
 - Check: `training_programs_values`
 - Check: `training_programs_timing`
 - Check: `training_programs_time_zone`
+- Check: `training_programs_location_policy`
 - Row Level Security enabled (no policies)
 
 ### training_schedules
@@ -717,25 +721,26 @@ Constraints and rules:
 
 ### webauthn_credentials
 
-Prisma model `WebAuthnCredential`. A registered platform authenticator (passkey) of one account (§4.5). Only the public key is stored — never biometric data. Owner, credential id and key are immutable (trigger): a credential belongs to the account that enrolled it (§16.1).
+Prisma model `WebAuthnCredential`. A registered biometric sign-in credential of one account (§4.5, Phase 8). Only the public key is stored — never biometric data. Owner, credential id and key are immutable (trigger): a credential belongs to the account that enrolled it (§16.1). Biometric credentials are for signing in only: attendance never requires them.
 
-| Column          | Type           | Null | Key / default         | Notes                                           |
-| --------------- | -------------- | ---- | --------------------- | ----------------------------------------------- |
-| `id`            | Uuid           |      | PK, default `uuid(7)` |                                                 |
-| `user_id`       | Uuid           |      |                       |                                                 |
-| `credential_id` | VarChar(1024)  |      | unique                | base64url credential id from the authenticator. |
-| `public_key`    | Bytes          |      |                       | COSE public key.                                |
-| `sign_count`    | BigInt         |      | default `0`           |                                                 |
-| `transports`    | String[]       |      |                       |                                                 |
-| `multi_device`  | Boolean        |      |                       |                                                 |
-| `backed_up`     | Boolean        |      |                       |                                                 |
-| `aaguid`        | VarChar(36)    | yes  |                       |                                                 |
-| `name`          | VarChar(100)   |      |                       |                                                 |
-| `created_at`    | Timestamptz(3) |      | default `now()`       |                                                 |
-| `last_used_at`  | Timestamptz(3) | yes  |                       |                                                 |
-| `revoked_at`    | Timestamptz(3) | yes  |                       |                                                 |
-| `revoked_by_id` | Uuid           | yes  |                       |                                                 |
-| `revoke_reason` | VarChar(500)   | yes  |                       |                                                 |
+| Column          | Type                         | Null | Key / default         | Notes                                                                                  |
+| --------------- | ---------------------------- | ---- | --------------------- | -------------------------------------------------------------------------------------- |
+| `id`            | Uuid                         |      | PK, default `uuid(7)` |                                                                                        |
+| `user_id`       | Uuid                         |      |                       |                                                                                        |
+| `kind`          | enum BiometricCredentialKind |      | default `PASSKEY`     |                                                                                        |
+| `credential_id` | VarChar(1024)                |      | unique                | base64url credential id (from the authenticator, or server-generated for ANDROID_KEY). |
+| `public_key`    | Bytes                        |      |                       | COSE public key (PASSKEY) or DER SubjectPublicKeyInfo (ANDROID_KEY).                   |
+| `sign_count`    | BigInt                       |      | default `0`           |                                                                                        |
+| `transports`    | String[]                     |      |                       |                                                                                        |
+| `multi_device`  | Boolean                      |      |                       |                                                                                        |
+| `backed_up`     | Boolean                      |      |                       |                                                                                        |
+| `aaguid`        | VarChar(36)                  | yes  |                       |                                                                                        |
+| `name`          | VarChar(100)                 |      |                       |                                                                                        |
+| `created_at`    | Timestamptz(3)               |      | default `now()`       |                                                                                        |
+| `last_used_at`  | Timestamptz(3)               | yes  |                       |                                                                                        |
+| `revoked_at`    | Timestamptz(3)               | yes  |                       |                                                                                        |
+| `revoked_by_id` | Uuid                         | yes  |                       |                                                                                        |
+| `revoke_reason` | VarChar(500)                 | yes  |                       |                                                                                        |
 
 Foreign keys:
 
@@ -746,23 +751,25 @@ Constraints and rules:
 
 - Index: `userId, revokedAt`
 - Check: `webauthn_credentials_values`
+- Check: `webauthn_credentials_kind`
 - Trigger: `webauthn_credentials_immutable`
 - Row Level Security enabled (no policies)
 
 ### webauthn_challenges
 
-Prisma model `WebAuthnChallenge`. A single-use WebAuthn challenge (5 minutes). A check-in challenge is bound to one account and one visit, so an assertion cannot be replayed elsewhere.
+Prisma model `WebAuthnChallenge`. A single-use challenge (5 minutes). Registration challenges are bound to the account, device sign-in ones to the credential, so a signature cannot be replayed for another purpose, account or device.
 
-| Column        | Type                 | Null | Key / default         | Notes |
-| ------------- | -------------------- | ---- | --------------------- | ----- |
-| `id`          | Uuid                 |      | PK, default `uuid(7)` |       |
-| `purpose`     | enum WebAuthnPurpose |      |                       |       |
-| `challenge`   | VarChar(128)         |      |                       |       |
-| `user_id`     | Uuid                 | yes  |                       |       |
-| `visit_id`    | Uuid                 | yes  |                       |       |
-| `expires_at`  | Timestamptz(3)       |      |                       |       |
-| `consumed_at` | Timestamptz(3)       | yes  |                       |       |
-| `created_at`  | Timestamptz(3)       |      | default `now()`       |       |
+| Column          | Type                 | Null | Key / default         | Notes                                                                  |
+| --------------- | -------------------- | ---- | --------------------- | ---------------------------------------------------------------------- |
+| `id`            | Uuid                 |      | PK, default `uuid(7)` |                                                                        |
+| `purpose`       | enum WebAuthnPurpose |      |                       |                                                                        |
+| `challenge`     | VarChar(128)         |      |                       |                                                                        |
+| `user_id`       | Uuid                 | yes  |                       |                                                                        |
+| `visit_id`      | Uuid                 | yes  |                       |                                                                        |
+| `credential_id` | VarChar(1024)        | yes  |                       | DEVICE_LOGIN only: the credential id the device asked to sign in with. |
+| `expires_at`    | Timestamptz(3)       |      |                       |                                                                        |
+| `consumed_at`   | Timestamptz(3)       | yes  |                       |                                                                        |
+| `created_at`    | Timestamptz(3)       |      | default `now()`       |                                                                        |
 
 Foreign keys:
 
@@ -772,6 +779,7 @@ Foreign keys:
 Constraints and rules:
 
 - Index: `expiresAt`
+- Check: `webauthn_challenges_binding`
 - Check: `webauthn_challenges_binding`
 - Row Level Security enabled (no policies)
 
@@ -818,7 +826,48 @@ Constraints and rules:
 - Check: `attendance_records_source`
 - Check: `attendance_records_location`
 - Check: `attendance_records_correction`
+- Check: `attendance_records_source`
 - Trigger: `attendance_records_check`
+- Row Level Security enabled (no policies)
+
+### guest_check_ins
+
+Prisma model `GuestCheckIn`. A guest attendance submission (Phase 8). Name and seat number are typed by the person and are NOT verified: anyone at the permitted place with the QR code can type any name and seat number. Status and time come from the server's clock; the location reading is required and checked against the program's policy. Append-only (trigger).
+
+| Column                 | Type                     | Null | Key / default         | Notes                                                                               |
+| ---------------------- | ------------------------ | ---- | --------------------- | ----------------------------------------------------------------------------------- |
+| `id`                   | Uuid                     |      | PK, default `uuid(7)` |                                                                                     |
+| `visit_id`             | Uuid                     |      |                       |                                                                                     |
+| `submission_key`       | Uuid                     |      |                       | Generated by the client per attempt: a retried request returns the first answer.    |
+| `full_name`            | VarChar(200)             |      |                       | As typed (trimmed), not verified.                                                   |
+| `seat_number`          | VarChar(20)              |      |                       | Normalized (uppercase, Western digits), not verified.                               |
+| `status`               | enum AttendanceStatus    |      |                       |                                                                                     |
+| `minutes_late`         | Int                      |      | default `0`           |                                                                                     |
+| `submitted_at`         | Timestamptz(3)           |      |                       |                                                                                     |
+| `latitude`             | Float                    |      |                       |                                                                                     |
+| `longitude`            | Float                    |      |                       |                                                                                     |
+| `accuracy_meters`      | Float                    | yes  |                       |                                                                                     |
+| `distance_meters`      | Int                      | yes  |                       |                                                                                     |
+| `outcome`              | enum GuestCheckInOutcome |      |                       |                                                                                     |
+| `student_id`           | Uuid                     | yes  |                       | The student whose seat number was typed (RECORDED, and DUPLICATE when matched).     |
+| `attendance_record_id` | Uuid                     | yes  | unique                | The record this submission created (RECORDED only).                                 |
+| `name_matches`         | Boolean                  | yes  |                       | Whether the typed name matches the matched student's record (spelling-insensitive). |
+| `created_at`           | Timestamptz(3)           |      | default `now()`       |                                                                                     |
+
+Foreign keys:
+
+- `visitId` → `training_visits` (on delete: Restrict)
+- `studentId` → `student_profiles` (on delete: Restrict)
+- `attendanceRecordId` → `attendance_records` (on delete: Restrict)
+
+Constraints and rules:
+
+- Unique: `visitId, submissionKey`
+- Index: `visitId, seatNumber`
+- Check: `guest_check_ins_values`
+- Check: `guest_check_ins_outcome`
+- Trigger: `guest_check_ins_check`
+- Trigger: `guest_check_ins_append_only`
 - Row Level Security enabled (no policies)
 
 ### support_tickets
@@ -1015,28 +1064,28 @@ Constraints and rules:
 
 ## Enums (23)
 
-| Enum                     | Values                                                                                                                     |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `Role`                   | `SUPER_ADMIN`, `TRAINING_DIRECTOR`, `FACULTY`, `STUDENT`                                                                   |
-| `AccountStatus`          | `PENDING_VERIFICATION`, `ACTIVE`, `SUSPENDED`                                                                              |
-| `Locale`                 | `ar`, `en`                                                                                                                 |
-| `GrantEffect`            | `ALLOW`, `DENY`                                                                                                            |
-| `AuthMethod`             | `PASSWORD`, `EMAIL_CODE`, `BIOMETRIC`                                                                                      |
-| `ChallengePurpose`       | `LOGIN`, `PASSWORD_RESET`, `SIGNUP`                                                                                        |
-| `AuditOutcome`           | `SUCCESS`, `FAILURE`                                                                                                       |
-| `MembershipSource`       | `MANUAL`, `IMPORT`, `VERIFICATION`, `SWAP`                                                                                 |
-| `ImportStatus`           | `PREVIEW`, `COMMITTED`, `DISCARDED`                                                                                        |
-| `RequestStatus`          | `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`                                                                             |
-| `VerificationIssue`      | `NO_RECORD`, `SEAT_ALREADY_LINKED`, `DETAILS_MISMATCH`, `EMAIL_ON_OTHER_RECORD`                                            |
-| `VisitStatus`            | `SCHEDULED`, `CANCELLED`                                                                                                   |
-| `VisitFileKind`          | `COVER`, `DOCUMENT`                                                                                                        |
-| `BiometricFallback`      | `ALLOW_UNVERIFIED`, `REQUIRE_BIOMETRIC`                                                                                    |
-| `GeolocationPolicy`      | `REQUIRED`, `OPTIONAL`                                                                                                     |
-| `WebAuthnPurpose`        | `REGISTRATION`, `AUTHENTICATION`, `CHECK_IN`                                                                               |
-| `AttendanceStatus`       | `PRESENT`, `LATE`, `ABSENT`                                                                                                |
-| `AttendanceSource`       | `QR`, `MANUAL`, `AUTOMATIC`                                                                                                |
-| `TicketCategory`         | `COMPLAINT`, `SUGGESTION`, `GROUP_SWAP`                                                                                    |
-| `TicketStatus`           | `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`                                                                                |
-| `GroupSwapStatus`        | `PENDING_COUNTERPART`, `COUNTERPART_REJECTED`, `PENDING_FACULTY`, `FACULTY_REJECTED`, `APPROVED`, `WITHDRAWN`, `CANCELLED` |
-| `GroupSwapDecisionKind`  | `COUNTERPART`, `FACULTY`, `REQUESTER`, `SYSTEM`                                                                            |
-| `GroupSwapDecisionValue` | `ACCEPTED`, `REJECTED`, `APPROVED`, `WITHDRAWN`, `CANCELLED`                                                               |
+| Enum                      | Values                                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `Role`                    | `SUPER_ADMIN`, `TRAINING_DIRECTOR`, `FACULTY`, `STUDENT`                                                                   |
+| `AccountStatus`           | `PENDING_VERIFICATION`, `ACTIVE`, `SUSPENDED`                                                                              |
+| `Locale`                  | `ar`, `en`                                                                                                                 |
+| `GrantEffect`             | `ALLOW`, `DENY`                                                                                                            |
+| `AuthMethod`              | `PASSWORD`, `EMAIL_CODE`, `BIOMETRIC`                                                                                      |
+| `ChallengePurpose`        | `LOGIN`, `PASSWORD_RESET`, `SIGNUP`                                                                                        |
+| `AuditOutcome`            | `SUCCESS`, `FAILURE`                                                                                                       |
+| `MembershipSource`        | `MANUAL`, `IMPORT`, `VERIFICATION`, `SWAP`                                                                                 |
+| `ImportStatus`            | `PREVIEW`, `COMMITTED`, `DISCARDED`                                                                                        |
+| `RequestStatus`           | `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`                                                                             |
+| `VerificationIssue`       | `NO_RECORD`, `SEAT_ALREADY_LINKED`, `DETAILS_MISMATCH`, `EMAIL_ON_OTHER_RECORD`                                            |
+| `VisitStatus`             | `SCHEDULED`, `CANCELLED`                                                                                                   |
+| `VisitFileKind`           | `COVER`, `DOCUMENT`                                                                                                        |
+| `BiometricCredentialKind` | `PASSKEY`, `ANDROID_KEY`                                                                                                   |
+| `WebAuthnPurpose`         | `REGISTRATION`, `AUTHENTICATION`, `CHECK_IN`, `DEVICE_REGISTRATION`, `DEVICE_LOGIN`                                        |
+| `AttendanceStatus`        | `PRESENT`, `LATE`, `ABSENT`                                                                                                |
+| `AttendanceSource`        | `QR`, `MANUAL`, `AUTOMATIC`, `GUEST`                                                                                       |
+| `GuestCheckInOutcome`     | `RECORDED`, `DUPLICATE`, `UNMATCHED`                                                                                       |
+| `TicketCategory`          | `COMPLAINT`, `SUGGESTION`, `GROUP_SWAP`                                                                                    |
+| `TicketStatus`            | `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`                                                                                |
+| `GroupSwapStatus`         | `PENDING_COUNTERPART`, `COUNTERPART_REJECTED`, `PENDING_FACULTY`, `FACULTY_REJECTED`, `APPROVED`, `WITHDRAWN`, `CANCELLED` |
+| `GroupSwapDecisionKind`   | `COUNTERPART`, `FACULTY`, `REQUESTER`, `SYSTEM`                                                                            |
+| `GroupSwapDecisionValue`  | `ACCEPTED`, `REJECTED`, `APPROVED`, `WITHDRAWN`, `CANCELLED`                                                               |

@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AuthCard } from '@/components/auth-card';
 import { BiometricSignIn } from '@/components/biometric-sign-in';
+import { DeviceKeySignIn } from '@/components/device-key-sign-in';
 import { currentUser, homeFor } from '@/lib/auth/session';
 import { safeNext } from '@/lib/safe-next';
 import { LoginForms } from './login-forms';
@@ -35,6 +37,12 @@ export default async function LoginPage({
       )}
       <LoginForms next={next} />
       <BiometricSignIn next={next} />
+      <DeviceKeySignIn next={next} />
+      <p className="guest-link">
+        <Link href={next?.startsWith('/check-in/') ? `${next}/guest` : '/guest'}>
+          {t('continueAsGuest')}
+        </Link>
+      </p>
     </AuthCard>
   );
 }

@@ -3,6 +3,7 @@
 import {
   type AcceptedResponse,
   type AuthResponse,
+  type DeviceKeyChallenge,
   isLocale,
   LOCALE_COOKIE,
   type SignupResponse,
@@ -61,6 +62,47 @@ export async function biometricLoginAction(input: {
   const result = await apiFetch<AuthResponse>('/auth/biometric/login', {
     method: 'POST',
     body: { challengeId: input.challengeId, response: input.response },
+  });
+  if (!result.ok) return failure(result);
+  await storeSession(result.data);
+  redirect(destination(result.data, input.next));
+}
+
+export type DeviceChallengeStart =
+  | { ok: true; challengeId: string; challenge: string }
+  | { ok: false; error: string; retryAfterMinutes?: number };
+
+/**
+ * Biometric sign-in in the Android app (Phase 8), step 1: a challenge bound to
+ * the credential this device registered. Optional convenience only.
+ */
+export async function deviceLoginOptionsAction(
+  credentialId: string,
+): Promise<DeviceChallengeStart> {
+  const result = await apiFetch<DeviceKeyChallenge>('/auth/biometric/device/login/options', {
+    method: 'POST',
+    body: { credentialId },
+  });
+  if (!result.ok) {
+    return { ok: false, error: result.code, retryAfterMinutes: failure(result).retryAfterMinutes };
+  }
+  return { ok: true, challengeId: result.data.challengeId, challenge: result.data.challenge };
+}
+
+/** Step 2: the Keystore key's signature, made after the phone's biometric check. Redirects on success. */
+export async function deviceLoginAction(input: {
+  challengeId: string;
+  credentialId: string;
+  signature: string;
+  next?: string;
+}): Promise<FormState> {
+  const result = await apiFetch<AuthResponse>('/auth/biometric/device/login', {
+    method: 'POST',
+    body: {
+      challengeId: input.challengeId,
+      credentialId: input.credentialId,
+      signature: input.signature,
+    },
   });
   if (!result.ok) return failure(result);
   await storeSession(result.data);

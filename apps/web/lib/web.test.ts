@@ -9,9 +9,8 @@ import {
   AUDIT_CATEGORIES,
   AUDIT_RESOURCE_TYPES,
   AUDIT_SCOPES,
-  BIOMETRIC_FALLBACKS,
   CHECK_IN_STATES,
-  GEOLOCATION_POLICIES,
+  GUEST_CHECK_IN_OUTCOMES,
   GROUP_SWAP_CANCEL_REASONS,
   GROUP_SWAP_DECISION_KINDS,
   GROUP_SWAP_DECISIONS,
@@ -42,6 +41,7 @@ import { intlLocale, resolveLocale } from '../i18n/locale';
 import { needsRefresh, tokenExpiresAt } from './auth/tokens';
 import { lastDayOf, monthGrid, parseMonth, shiftMonth, WEEK_ORDER } from './calendar';
 import { ceremonyErrorCode } from './device';
+import { deviceKeyErrorCode, tokenFromQr } from './native';
 import { showValue } from './display';
 import { auditResourceHref } from './audit';
 import { navigationFor } from './navigation';
@@ -112,8 +112,6 @@ describe('message catalogs', () => {
       ...ATTENDANCE_SOURCES.map((c) => `attendance.source.${c}`),
       ...ATTENDANCE_FILTER_STATUSES.map((c) => `attendance.filterStatus.${c}`),
       ...CHECK_IN_STATES.map((c) => `attendance.window.${c}`),
-      ...BIOMETRIC_FALLBACKS.map((c) => `schedule.policy.fallback.${c}`),
-      ...GEOLOCATION_POLICIES.map((c) => `schedule.policy.location.${c}`),
       ...[
         'BIOMETRIC_CANCELLED',
         'BIOMETRIC_UNSUPPORTED',
@@ -329,6 +327,9 @@ describe('audit records link to the record they concern (§15.3)', () => {
     expect(auditResourceHref({ type: 'attendance', id, visitId: 'v1' })).toBe(
       '/visits/v1/attendance',
     );
+    expect(auditResourceHref({ type: 'guest_check_in', id, visitId: 'v1' })).toBe(
+      '/visits/v1/attendance',
+    );
   });
   it('has no page for sessions, devices, reports or the log itself', () => {
     for (const type of ['auth_session', 'webauthn_credential', 'report', 'audit_log'] as const)
@@ -407,6 +408,86 @@ describe('device ceremonies (§4.5)', () => {
     expect(ceremonyErrorCode(named('SecurityError'))).toBe('BIOMETRIC_UNSUPPORTED');
     expect(ceremonyErrorCode('weird')).toBe('BIOMETRIC_FAILED');
     expect(ceremonyErrorCode(null)).toBe('BIOMETRIC_FAILED');
+  });
+});
+
+describe('Android app and guest attendance (Phase 8)', () => {
+  const token = 'Abc_DEF-123456789xyz';
+
+  it('takes only the attendance token from a scanned or pasted code, never its host', () => {
+    expect(tokenFromQr(token)).toBe(token);
+    expect(tokenFromQr(` https://ftms.example.edu/check-in/${token} `)).toBe(token);
+    expect(tokenFromQr(`https://elsewhere.example/check-in/${token}?x=1`)).toBe(token);
+    expect(tokenFromQr(`https://ftms.example.edu/check-in/${token}/guest`)).toBe(token);
+    expect(tokenFromQr('https://ftms.example.edu/login')).toBeNull();
+    expect(tokenFromQr('short')).toBeNull();
+    expect(tokenFromQr('javascript:alert(1)')).toBeNull();
+    expect(tokenFromQr(`https://ftms.example.edu/check-in/${token}<script>`)).toBeNull();
+  });
+
+  it('maps device-key plugin failures to message codes', () => {
+    expect(deviceKeyErrorCode(new Error('User cancelled the prompt'))).toBe('BIOMETRIC_CANCELLED');
+    expect(deviceKeyErrorCode('BIOMETRIC_LOCKOUT: too many attempts')).toBe('BIOMETRIC_LOCKOUT');
+    expect(deviceKeyErrorCode(new Error('Key permanently invalidated'))).toBe(
+      'BIOMETRIC_KEY_INVALIDATED',
+    );
+    expect(deviceKeyErrorCode(null)).toBe('BIOMETRIC_FAILED');
+    // The plugin rejects with { message, code }; the code wins over the text.
+    expect(deviceKeyErrorCode({ code: 'BIOMETRIC_KEY_INVALIDATED', message: 'x' })).toBe(
+      'BIOMETRIC_KEY_INVALIDATED',
+    );
+    expect(deviceKeyErrorCode({ code: 'BIOMETRIC_FAILED', message: 'Operation canceled' })).toBe(
+      'BIOMETRIC_FAILED',
+    );
+    expect(deviceKeyErrorCode({ code: 'BIOMETRIC_NOT_SET_UP', message: 'none' })).toBe(
+      'BIOMETRIC_FAILED',
+    );
+  });
+
+  it('states that biometric login is optional and never needed for attendance', () => {
+    expect(lookup(en, 'biometrics.optionalNotice')).toBe(
+      'Biometric login is an optional convenience feature for signing in. It is not required for attendance.',
+    );
+    expect(typeof lookup(ar, 'biometrics.optionalNotice')).toBe('string');
+    // No check-in text asks for biometrics any more.
+    for (const catalog of [ar, en] as Tree[])
+      for (const key of keys(lookup(catalog, 'checkIn') as Tree))
+        expect([key, lookup(catalog, `checkIn.${key}`)]).not.toEqual([
+          key,
+          expect.stringMatching(/biometric|fingerprint|بصمة|بالبصمة/i),
+        ]);
+  });
+
+  it('offers Log In and Continue as Guest, and says typed guest details are not verified', () => {
+    expect(lookup(en, 'checkIn.logIn')).toBe('Log In');
+    expect(lookup(en, 'checkIn.continueAsGuest')).toBe('Continue as Guest');
+    expect(lookup(en, 'guest.notVerifiedNotice')).toMatch(/not verified/);
+  });
+
+  it('translates every Phase 8 code', () => {
+    const required = [
+      ...GUEST_CHECK_IN_OUTCOMES.map((c) => `attendance.guest.outcomes.${c}`),
+      ...GUEST_CHECK_IN_OUTCOMES.map((c) => `audit.values.${c}`),
+      ...(['CAMERA_DENIED', 'SCAN_UNAVAILABLE', 'QR_INVALID'] as const).map(
+        (c) => `scan.errors.${c}`,
+      ),
+      ...[
+        'GEOLOCATION_REQUIRED',
+        'GEOLOCATION_DENIED',
+        'GEOLOCATION_UNAVAILABLE',
+        'LOCATION_INACCURATE',
+        'LOCATION_OUTSIDE_AREA',
+      ].flatMap((c) => [`errors.${c}`, `location.help.${c}`]),
+      ...['BIOMETRIC_LOCKOUT', 'BIOMETRIC_KEY_INVALIDATED'].map((c) => `errors.${c}`),
+      'audit.values.PASSKEY',
+      'audit.values.ANDROID_KEY',
+      'notifications.text.attendanceGuestRecorded',
+      'notifications.text.attendanceGuestRecordedBody',
+    ];
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of required)
+        expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
+    }
   });
 });
 

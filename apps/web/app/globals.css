@@ -1244,3 +1244,68 @@ h3,
     animation-duration: 2.4s;
   }
 }
+
+/* ── Phase 8: Android app, guest attendance, location rules ─────────────────────────── */
+.badge-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--brand-blue);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.guest-link {
+  text-align: center;
+  margin: 0.75rem 0 0;
+}
+.guest-facts {
+  margin: 0;
+  padding-inline-start: 1.2rem;
+}
+.guest-facts li + li {
+  margin-block-start: 0.25rem;
+}
+/*
+ * While the Android app scans a QR code, the camera preview is drawn behind the
+ * web view: the page turns transparent and only the scanning frame stays visible.
+ */
+html.scanning,
+html.scanning body {
+  background: transparent !important;
+}
+html.scanning body * {
+  visibility: hidden;
+}
+html.scanning .scan-overlay,
+html.scanning .scan-overlay * {
+  visibility: visible;
+}
+.scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2rem 1rem calc(2rem + env(safe-area-inset-bottom));
+}
+.scan-hint {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+}
+.scan-frame {
+  inline-size: min(70vw, 18rem);
+  aspect-ratio: 1;
+  border: 3px solid #fff;
+  border-radius: 1rem;
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 45%);
+}

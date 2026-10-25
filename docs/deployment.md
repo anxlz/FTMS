@@ -99,12 +99,14 @@ Phase 7).
 Both projects: the `packageManager` field pins pnpm 10.28.0; if Vercel picks another pnpm
 version, set `ENABLE_EXPERIMENTAL_COREPACK=1` in the project's environment.
 
-### Domains and biometrics
+### Domains and biometric login
 
-Give the web project its final domain **before** students enroll biometrics, then set
-`WEB_APP_URL` on the API project to that `https://` URL and redeploy the API. The
-WebAuthn relying party is that host (or `WEBAUTHN_RP_ID`); changing it later invalidates
-every enrolled device. QR codes and email links also use `WEB_APP_URL`.
+Give the web project its final domain **before** anyone turns on biometric login in a
+browser, then set `WEB_APP_URL` on the API project to that `https://` URL and redeploy the
+API. The WebAuthn relying party is that host (or `WEBAUTHN_RP_ID`); changing it later
+invalidates every enrolled passkey (Android app keys are not affected). QR codes and email
+links also use `WEB_APP_URL`. Build the Android app with `FTMS_WEB_URL` set to the same web
+origin ([mobile.md](mobile.md)).
 
 ## 6. Database migrations
 
@@ -154,10 +156,13 @@ Then by hand, on a phone over HTTPS:
 1. Sign in as the Super Admin with the one-time password; set the new password.
 2. Request an email code for a second account; the email arrives from the faculty
    address.
-3. Enroll biometrics on a phone (fingerprint or face), sign out, sign in with it.
+3. Optional biometric login: turn it on in Profile → Security on a phone (fingerprint or
+   face), sign out, sign in with it; turn it off.
 4. Create a group, a visit for it starting soon, print its attendance QR code; scan it
-   with a student's phone; confirm with biometrics and location; check the record (and
-   the location) on the visit's attendance page.
+   with a student's phone; check in (location only — no biometric step); check the record
+   (and the location) on the visit's attendance page. Scan it again signed out and use
+   **Continue as Guest** with another student's seat number; the submission appears under
+   "Guest submissions" and that student is notified.
 5. Wait for the window to close; the absent members appear as Absent within 5 minutes.
 6. Download the attendance export as PDF, XLSX and CSV; open each.
 7. `/audit` shows each of these actions.
@@ -202,3 +207,12 @@ repository containing only committed (and to-be-committed) files — no build ou
 Not verified (needs the real accounts): the deployment itself, Supabase pooler
 connections and Storage, Upstash, Gmail delivery, `pg_cron`, HTTPS/HSTS on real domains,
 and biometrics on real phones.
+
+## Android app
+
+Not part of the Vercel deployment: an APK/AAB is built from `apps/mobile` on a machine
+with the Android SDK and NDK, against the deployed web app's address, signed with the
+faculty's own release key (never committed) and distributed by the faculty (side-loading
+or a store listing). Steps, prerequisites and the device checklist:
+[mobile.md](mobile.md). Phase 8 could not build it in its environment (no Android SDK/NDK
+or Google Maven access).

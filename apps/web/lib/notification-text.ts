@@ -117,6 +117,18 @@ export async function notificationTexts(items: Notification[]): Promise<Notifica
           ),
         };
       }
+      case 'attendance.guest_recorded': {
+        const minutes = typeof d.minutesLate === 'number' ? d.minutesLate : 0;
+        const status = ['PRESENT', 'LATE'].includes(str(d.status)) ? str(d.status) : '';
+        return {
+          title: t('attendanceGuestRecorded', { title }),
+          body: join(
+            day(d.date),
+            status ? t(`attendanceStatus.${status}`, { minutes }) : '',
+            t('attendanceGuestRecordedBody'),
+          ),
+        };
+      }
       case 'security.biometric_enabled':
         return {
           title: t('biometricEnabled'),

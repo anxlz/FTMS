@@ -87,6 +87,7 @@ export async function bootTestApp(
 }
 
 const TRUNCATE = [
+  'guest_check_ins',
   'group_swap_decisions',
   'group_swap_requests',
   'ticket_attachments',
@@ -268,8 +269,9 @@ export async function createProgram(
     durationWeeks?: number;
     timing?: { checkInOpensMinutes: number; graceMinutes: number; checkInClosesMinutes: number };
     allowedAbsences?: number;
-    biometricFallback?: 'ALLOW_UNVERIFIED' | 'REQUIRE_BIOMETRIC';
-    geolocationPolicy?: 'REQUIRED' | 'OPTIONAL';
+    /** Phase 8 location policy (null: no limit). */
+    locationRadiusMeters?: number | null;
+    locationMaxAccuracyMeters?: number | null;
   } = {},
 ): Promise<{ id: string; startDate: LocalDate }> {
   const startDate = options.startDate ?? cairoDate(-14);
@@ -279,8 +281,8 @@ export async function createProgram(
       startDate: new Date(`${startDate}T00:00:00Z`),
       durationWeeks: options.durationWeeks ?? 26,
       allowedAbsences: options.allowedAbsences ?? 2,
-      biometricFallback: options.biometricFallback ?? 'ALLOW_UNVERIFIED',
-      geolocationPolicy: options.geolocationPolicy ?? 'REQUIRED',
+      locationRadiusMeters: options.locationRadiusMeters ?? null,
+      locationMaxAccuracyMeters: options.locationMaxAccuracyMeters ?? null,
       ...(options.timing ?? {
         checkInOpensMinutes: 15,
         graceMinutes: 15,

@@ -60,14 +60,12 @@ export const API_ERROR_CODES = [
   'VISIT_IN_PAST',
   'TOO_MANY_FILES',
   'STORAGE_UNAVAILABLE',
-  // Phase 4 — attendance, biometrics, exports
+  // Phase 4 — attendance, biometrics, exports (biometric check-in codes removed in Phase 8)
   'QR_INVALID',
   'NOT_IN_VISIT_GROUP',
   'CHECK_IN_NOT_OPEN',
   'CHECK_IN_CLOSED',
   'ATTENDANCE_ALREADY_RECORDED',
-  'BIOMETRIC_REQUIRED',
-  'BIOMETRIC_NOT_ENROLLED',
   'BIOMETRIC_FAILED',
   'BIOMETRIC_REAUTH_REQUIRED',
   'BIOMETRIC_CREDENTIAL_EXISTS',
@@ -87,6 +85,9 @@ export const API_ERROR_CODES = [
   'SWAP_STALE',
   // Phase 7 — a dependency (e.g. Redis for rate limits) cannot be reached
   'SERVICE_UNAVAILABLE',
+  // Phase 8 — check-in location policy
+  'LOCATION_INACCURATE',
+  'LOCATION_OUTSIDE_AREA',
   'INTERNAL_ERROR',
 ] as const;
 

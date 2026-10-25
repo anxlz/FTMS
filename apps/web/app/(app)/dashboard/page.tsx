@@ -24,6 +24,7 @@ import {
   type UnreadCount,
 } from '@ftms/core';
 import { getFormatter, getTranslations } from 'next-intl/server';
+import { AppCheckIn } from '@/components/app-check-in';
 import { timeRange } from '@/components/month-calendar';
 import { apiFetch } from '@/lib/api';
 import { accessToken, requireUser } from '@/lib/auth/session';
@@ -114,6 +115,7 @@ export default async function DashboardPage() {
   return (
     <div className="stack-lg">
       <h1>{t('dashboard.welcome', { name: user.displayName })}</h1>
+      {user.role === 'STUDENT' && <AppCheckIn />}
 
       <section className="card" aria-labelledby="account-title">
         <h2 id="account-title">{t('dashboard.account')}</h2>

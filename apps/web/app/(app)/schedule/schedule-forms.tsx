@@ -1,9 +1,7 @@
 'use client';
 
 import {
-  BIOMETRIC_FALLBACKS,
   type CheckInPolicy,
-  GEOLOCATION_POLICIES,
   type GroupRef,
   type Program,
   type Schedule,
@@ -70,27 +68,37 @@ function TimingFields({ state, timing }: { state: FormState; timing: VisitTiming
   );
 }
 
-/** §7.2 fallback for students without biometrics, and the location rule for it. */
+/**
+ * §7.2 as revised in Phase 8: every check-in sends the device location; the
+ * program may limit the distance from the visit and the reading's accuracy.
+ * Empty means no limit. Biometrics are never part of attendance.
+ */
 function PolicyFields({ state, policy }: { state: FormState; policy: CheckInPolicy }) {
   const t = useTranslations('schedule.policy');
   return (
     <fieldset className="plain-fieldset stack">
       <legend>{t('title')}</legend>
       <p className="muted small">{t('intro')}</p>
-      <SelectField
-        label={t('biometricFallback')}
-        name="biometricFallback"
-        defaultValue={val(state, 'biometricFallback', policy.biometricFallback)}
-        options={BIOMETRIC_FALLBACKS.map((v) => ({ value: v, label: t(`fallback.${v}`) }))}
-        errors={state.fieldErrors?.biometricFallback}
-      />
-      <SelectField
-        label={t('geolocation')}
-        name="geolocation"
-        defaultValue={val(state, 'geolocation', policy.geolocation)}
-        options={GEOLOCATION_POLICIES.map((v) => ({ value: v, label: t(`location.${v}`) }))}
-        errors={state.fieldErrors?.geolocation}
-      />
+      <div className="grid-2">
+        <Field
+          label={t('radius')}
+          name="radiusMeters"
+          inputMode="numeric"
+          dir="ltr"
+          hint={t('radiusHint')}
+          defaultValue={val(state, 'radiusMeters', policy.radiusMeters)}
+          errors={state.fieldErrors?.radiusMeters}
+        />
+        <Field
+          label={t('accuracy')}
+          name="maxAccuracyMeters"
+          inputMode="numeric"
+          dir="ltr"
+          hint={t('accuracyHint')}
+          defaultValue={val(state, 'maxAccuracyMeters', policy.maxAccuracyMeters)}
+          errors={state.fieldErrors?.maxAccuracyMeters}
+        />
+      </div>
     </fieldset>
   );
 }

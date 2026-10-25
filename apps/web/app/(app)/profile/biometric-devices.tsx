@@ -1,10 +1,10 @@
 'use client';
 
 import { startRegistration } from '@simplewebauthn/browser';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useActionState, useState, useTransition } from 'react';
 import { Field, FormError, FormSuccess, SubmitButton } from '@/components/form-controls';
+import { useInApp } from '@/lib/use-in-app';
 import { useWebAuthnSupport } from '@/lib/use-webauthn';
 import { ceremonyErrorCode } from '@/lib/device';
 import { type FormState, IDLE } from '@/lib/forms';
@@ -16,6 +16,7 @@ import {
 
 export interface DeviceRow {
   id: string;
+  kind: 'PASSKEY' | 'ANDROID_KEY';
   name: string;
   added: string;
   lastUsed: string | null;
@@ -23,17 +24,17 @@ export interface DeviceRow {
 }
 
 /**
- * The account's biometric devices (§4.5): enable this device, see where
- * biometric sign-in is on, and turn it off for a lost or replaced device.
+ * The account's biometric sign-in devices (§4.5, Phase 8): browser passkeys and
+ * Android app keys. Enable a browser's passkey here, see where biometric login
+ * is on, and turn it off for a lost or replaced device. Optional, for signing in
+ * only — never needed for attendance.
  */
 export function BiometricDevices({
   devices,
   biometricSession,
-  next,
 }: {
   devices: DeviceRow[];
   biometricSession: boolean;
-  next?: string;
 }) {
   const t = useTranslations('biometrics');
   return (
@@ -47,6 +48,9 @@ export function BiometricDevices({
             <li key={d.id}>
               <div>
                 <strong>{d.name}</strong>
+                <span className="badge">
+                  {d.kind === 'ANDROID_KEY' ? t('kindApp') : t('kindPasskey')}
+                </span>
                 {d.multiDevice && <span className="badge">{t('synced')}</span>}
                 <p className="muted small">
                   {t('added', { date: d.added })} ·{' '}
@@ -58,22 +62,29 @@ export function BiometricDevices({
           ))}
         </ul>
       )}
-      {biometricSession ? (
-        <p className="alert alert-info">{t('reauthNote')}</p>
-      ) : (
-        <AddDevice next={next} />
-      )}
+      {biometricSession ? <ReauthNote /> : <AddDevice />}
     </div>
   );
 }
 
-function AddDevice({ next }: { next?: string }) {
+/** In a browser (the app's DeviceKeySetting says the same for the phone). */
+function ReauthNote() {
+  const t = useTranslations('biometrics');
+  const app = useInApp();
+  if (app !== false) return null;
+  return <p className="alert alert-info">{t('reauthNote')}</p>;
+}
+
+/** A browser passkey. The Android app uses its own Keystore key instead (see DeviceKeySetting). */
+function AddDevice() {
   const t = useTranslations('biometrics');
   const supported = useWebAuthnSupport();
+  const app = useInApp();
   const [name, setName] = useState('');
   const [state, setState] = useState<FormState>(IDLE);
   const [pending, startTransition] = useTransition();
 
+  if (app !== false) return null;
   if (supported === false) return <p className="alert alert-info">{t('unsupported')}</p>;
 
   const enable = () =>
@@ -116,14 +127,7 @@ function AddDevice({ next }: { next?: string }) {
     <div className="stack">
       <h3>{t('enableTitle')}</h3>
       <FormError state={state} />
-      <FormSuccess show={state.status === 'success'}>
-        {t('enabled')}{' '}
-        {next && (
-          <Link href={next} className="btn btn-primary">
-            {t('continueCheckIn')}
-          </Link>
-        )}
-      </FormSuccess>
+      <FormSuccess show={state.status === 'success'}>{t('enabled')}</FormSuccess>
       <Field
         label={t('deviceName')}
         name="name"

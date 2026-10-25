@@ -88,7 +88,20 @@ export class ExportService {
 
     const where = this.where(query);
     const max = EXPORT_MAX_ROWS[query.format];
-    const total = await this.prisma.attendanceRecord.count({ where });
+    // Guest submissions that matched nobody have no record: they are listed too
+    // (typed name and seat number, not verified) unless the export is narrowed to
+    // a group or a student, which they do not belong to.
+    const guestWhere: Prisma.GuestCheckInWhereInput | null =
+      query.group || query.student
+        ? null
+        : {
+            outcome: 'UNMATCHED',
+            visit: visitScope,
+            ...(query.status ? { status: query.status } : {}),
+          };
+    const total =
+      (await this.prisma.attendanceRecord.count({ where })) +
+      (guestWhere ? await this.prisma.guestCheckIn.count({ where: guestWhere }) : 0);
     if (total > max) throw AttendanceErrors.exportTooLarge(max);
     const records = await this.prisma.attendanceRecord.findMany({
       where,
@@ -100,6 +113,33 @@ export class ExportService {
         student: { select: { fullName: true, seatNumber: true } },
       },
     });
+    const unmatched = guestWhere
+      ? await this.prisma.guestCheckIn.findMany({
+          where: guestWhere,
+          include: {
+            visit: {
+              select: { title: true, date: true, startTime: true, endTime: true, startsAt: true },
+            },
+          },
+        })
+      : [];
+    const scheduled = (v: { startTime: Date; endTime: Date | null }) =>
+      v.endTime ? `${fromDbTime(v.startTime)}–${fromDbTime(v.endTime)}` : fromDbTime(v.startTime);
+    const guestRows = unmatched.map((g): AttendanceExportRow & { sort: string } => ({
+      visitTitle: g.visit.title,
+      date: fromDbDate(g.visit.date),
+      scheduledTime: scheduled(g.visit),
+      group: '',
+      studentName: g.fullName,
+      seatNumber: g.seatNumber,
+      status: g.status,
+      checkedInAt: cairo(g.submittedAt),
+      minutesLate: g.minutesLate,
+      source: 'GUEST_UNMATCHED',
+      note: '',
+      // After the visit's groups.
+      sort: `${g.visit.startsAt.toISOString()}|${g.visit.title}|\uffff`,
+    }));
     return records
       .map((r): AttendanceExportRow & { sort: string } => ({
         visitTitle: r.visit.title,
@@ -114,10 +154,10 @@ export class ExportService {
         checkedInAt: r.checkedInAt ? cairo(r.checkedInAt) : '',
         minutesLate: r.minutesLate,
         source: r.source,
-        biometricVerified: r.biometricVerified,
         note: r.correctionReason ?? '',
         sort: `${r.visit.startsAt.toISOString()}|${r.visit.title}|${r.group.name}`,
       }))
+      .concat(guestRows)
       .sort(
         (a, b) => a.sort.localeCompare(b.sort) || a.studentName.localeCompare(b.studentName, 'ar'),
       )
@@ -150,7 +190,6 @@ export class ExportService {
         c.checkIn,
         c.minutesLate,
         c.source,
-        c.biometric,
         c.note,
       ],
       ...rows.map((r) => [
@@ -164,7 +203,6 @@ export class ExportService {
         r.checkedInAt,
         r.minutesLate,
         labels.source[r.source],
-        r.biometricVerified ? labels.yes : labels.no,
         r.note,
       ]),
     ];

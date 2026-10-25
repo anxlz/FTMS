@@ -141,6 +141,7 @@ model StudentProfile {
   profileChanges      ProfileChangeRequest[]
   verificationsLinked StudentVerificationRequest[]
   attendance          AttendanceRecord[]
+  guestCheckIns       GuestCheckIn[]
   tickets             SupportTicket[]
   swapsRequested      GroupSwapRequest[]           @relation("GroupSwapRequester")
   swapsReceived       GroupSwapRequest[]           @relation("GroupSwapCounterpart")
@@ -468,23 +469,25 @@ model ProfileChangeRequest {
 /// only pre-filled by the settings form — every value here is configurable.
 /// Timing values are copied into each visit when it is created (§8.1).
 model TrainingProgram {
-  id                   String            @id @default(uuid(7)) @db.Uuid
-  name                 String            @db.VarChar(200)
-  startDate            DateTime          @map("start_date") @db.Date
-  durationWeeks        Int               @map("duration_weeks")
+  id                        String   @id @default(uuid(7)) @db.Uuid
+  name                      String   @db.VarChar(200)
+  startDate                 DateTime @map("start_date") @db.Date
+  durationWeeks             Int      @map("duration_weeks")
   /// IANA zone of every wall-clock date/time in the program (§16.2).
-  timeZone             String            @default("Africa/Cairo") @map("time_zone") @db.VarChar(64)
-  checkInOpensMinutes  Int               @map("check_in_opens_minutes")
-  graceMinutes         Int               @map("grace_minutes")
-  checkInClosesMinutes Int               @map("check_in_closes_minutes")
-  allowedAbsences      Int               @map("allowed_absences")
-  /// §7.2 fallback for students without an enrolled biometric credential.
-  biometricFallback    BiometricFallback @default(ALLOW_UNVERIFIED) @map("biometric_fallback")
-  geolocationPolicy    GeolocationPolicy @default(REQUIRED) @map("geolocation_policy")
-  isCurrent            Boolean           @default(true) @map("is_current")
-  createdById          String?           @map("created_by_id") @db.Uuid
-  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  timeZone                  String   @default("Africa/Cairo") @map("time_zone") @db.VarChar(64)
+  checkInOpensMinutes       Int      @map("check_in_opens_minutes")
+  graceMinutes              Int      @map("grace_minutes")
+  checkInClosesMinutes      Int      @map("check_in_closes_minutes")
+  allowedAbsences           Int      @map("allowed_absences")
+  /// Phase 8 check-in location policy. A reading is always required; one farther
+  /// than this from the visit's coordinates is refused. NULL: no area limit.
+  locationRadiusMeters      Int?     @map("location_radius_meters")
+  /// Readings whose reported accuracy is worse than this are refused. NULL: no limit.
+  locationMaxAccuracyMeters Int?     @map("location_max_accuracy_meters")
+  isCurrent                 Boolean  @default(true) @map("is_current")
+  createdById               String?  @map("created_by_id") @db.Uuid
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   createdBy  User?               @relation("ProgramCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   schedules  TrainingSchedule[]
@@ -611,6 +614,7 @@ model TrainingVisit {
   groups               VisitGroup[]
   files                VisitFile[]
   attendance           AttendanceRecord[]
+  guestCheckIns        GuestCheckIn[]
   webauthnChallenges   WebAuthnChallenge[]
 
   @@unique([scheduleId, occurrenceDate])
@@ -683,39 +687,38 @@ model Notification {
  * ═══════════════════════════ Phase 4 ═══════════════════════════
  */
 
-enum BiometricFallback {
-  /// Students without a credential may check in; the record is marked unconfirmed.
-  ALLOW_UNVERIFIED
-  /// Students must enable biometric sign-in before they can check in.
-  REQUIRE_BIOMETRIC
+/// How a biometric sign-in credential proves possession of its key (Phase 8).
+enum BiometricCredentialKind {
+  /// A WebAuthn platform passkey (browsers): COSE public key, WebAuthn assertions.
+  PASSKEY
+  /// An EC P-256 key in the Android Keystore of the FTMS Android app, usable only
+  /// after a strong biometric check on the device: SPKI public key, signed challenges.
+  ANDROID_KEY
 }
 
-enum GeolocationPolicy {
-  REQUIRED
-  OPTIONAL
-}
-
-/// A registered platform authenticator (passkey) of one account (§4.5). Only the
-/// public key is stored — never biometric data. Owner, credential id and key are
+/// A registered biometric sign-in credential of one account (§4.5, Phase 8). Only
+/// the public key is stored — never biometric data. Owner, credential id and key are
 /// immutable (trigger): a credential belongs to the account that enrolled it (§16.1).
+/// Biometric credentials are for signing in only: attendance never requires them.
 model WebAuthnCredential {
-  id           String    @id @default(uuid(7)) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  /// base64url credential id from the authenticator.
-  credentialId String    @unique @map("credential_id") @db.VarChar(1024)
-  /// COSE public key.
-  publicKey    Bytes     @map("public_key")
-  signCount    BigInt    @default(0) @map("sign_count")
+  id           String                  @id @default(uuid(7)) @db.Uuid
+  userId       String                  @map("user_id") @db.Uuid
+  kind         BiometricCredentialKind @default(PASSKEY)
+  /// base64url credential id (from the authenticator, or server-generated for ANDROID_KEY).
+  credentialId String                  @unique @map("credential_id") @db.VarChar(1024)
+  /// COSE public key (PASSKEY) or DER SubjectPublicKeyInfo (ANDROID_KEY).
+  publicKey    Bytes                   @map("public_key")
+  signCount    BigInt                  @default(0) @map("sign_count")
   transports   String[]
-  multiDevice  Boolean   @map("multi_device")
-  backedUp     Boolean   @map("backed_up")
-  aaguid       String?   @db.VarChar(36)
-  name         String    @db.VarChar(100)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz(3)
-  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
-  revokedById  String?   @map("revoked_by_id") @db.Uuid
-  revokeReason String?   @map("revoke_reason") @db.VarChar(500)
+  multiDevice  Boolean                 @map("multi_device")
+  backedUp     Boolean                 @map("backed_up")
+  aaguid       String?                 @db.VarChar(36)
+  name         String                  @db.VarChar(100)
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt   DateTime?               @map("last_used_at") @db.Timestamptz(3)
+  revokedAt    DateTime?               @map("revoked_at") @db.Timestamptz(3)
+  revokedById  String?                 @map("revoked_by_id") @db.Uuid
+  revokeReason String?                 @map("revoke_reason") @db.VarChar(500)
 
   user       User               @relation("CredentialOwner", fields: [userId], references: [id], onDelete: Cascade)
   revokedBy  User?              @relation("CredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
@@ -729,20 +732,29 @@ model WebAuthnCredential {
 enum WebAuthnPurpose {
   REGISTRATION
   AUTHENTICATION
+  /// Phase 4 biometric check-in confirmation. No longer issued since Phase 8
+  /// (attendance never requires biometrics); kept for existing rows.
   CHECK_IN
+  /// Phase 8: proof of possession when an Android device key is registered.
+  DEVICE_REGISTRATION
+  /// Phase 8: sign-in with an Android device key, bound to that credential.
+  DEVICE_LOGIN
 }
 
-/// A single-use WebAuthn challenge (5 minutes). A check-in challenge is bound to
-/// one account and one visit, so an assertion cannot be replayed elsewhere.
+/// A single-use challenge (5 minutes). Registration challenges are bound to the
+/// account, device sign-in ones to the credential, so a signature cannot be replayed
+/// for another purpose, account or device.
 model WebAuthnChallenge {
-  id         String          @id @default(uuid(7)) @db.Uuid
-  purpose    WebAuthnPurpose
-  challenge  String          @db.VarChar(128)
-  userId     String?         @map("user_id") @db.Uuid
-  visitId    String?         @map("visit_id") @db.Uuid
-  expiresAt  DateTime        @map("expires_at") @db.Timestamptz(3)
-  consumedAt DateTime?       @map("consumed_at") @db.Timestamptz(3)
-  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  id           String          @id @default(uuid(7)) @db.Uuid
+  purpose      WebAuthnPurpose
+  challenge    String          @db.VarChar(128)
+  userId       String?         @map("user_id") @db.Uuid
+  visitId      String?         @map("visit_id") @db.Uuid
+  /// DEVICE_LOGIN only: the credential id the device asked to sign in with.
+  credentialId String?         @map("credential_id") @db.VarChar(1024)
+  expiresAt    DateTime        @map("expires_at") @db.Timestamptz(3)
+  consumedAt   DateTime?       @map("consumed_at") @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   visit TrainingVisit? @relation(fields: [visitId], references: [id], onDelete: Cascade)
@@ -761,6 +773,9 @@ enum AttendanceSource {
   QR
   MANUAL
   AUTOMATIC
+  /// Phase 8: created from a guest submission whose typed seat number matched a
+  /// current member of the visit's groups. The identity was NOT verified.
+  GUEST
 }
 
 /// One effective attendance record per student per visit (§8.5, §16.1). The group
@@ -788,16 +803,74 @@ model AttendanceRecord {
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  visit       TrainingVisit       @relation(fields: [visitId], references: [id], onDelete: Restrict)
-  student     StudentProfile      @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  group       TrainingGroup       @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  credential  WebAuthnCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
-  correctedBy User?               @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  visit        TrainingVisit       @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  student      StudentProfile      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  group        TrainingGroup       @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  credential   WebAuthnCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  correctedBy  User?               @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  guestCheckIn GuestCheckIn?
 
   @@unique([visitId, studentId])
   @@index([studentId])
   @@index([groupId, status])
   @@map("attendance_records")
+}
+
+/**
+ * ═══════════════════════════ Phase 8 ═══════════════════════════
+ * Guest attendance: submitted from a printed visit QR code without signing in.
+ */
+
+/// What a guest submission led to. Never shown to the guest (the answer is the same
+/// in every case), so it reveals nothing about students or their records.
+enum GuestCheckInOutcome {
+  /// The typed seat number belongs to a current member of one of the visit's groups
+  /// without a record: an attendance record was created for that student (source GUEST).
+  RECORDED
+  /// That student already had a record, or this seat number was already submitted for
+  /// this visit: nothing else changed.
+  DUPLICATE
+  /// No current member of the visit's groups has that seat number.
+  UNMATCHED
+}
+
+/// A guest attendance submission (Phase 8). Name and seat number are typed by the
+/// person and are NOT verified: anyone at the permitted place with the QR code can
+/// type any name and seat number. Status and time come from the server's clock; the
+/// location reading is required and checked against the program's policy.
+/// Append-only (trigger).
+model GuestCheckIn {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  visitId            String              @map("visit_id") @db.Uuid
+  /// Generated by the client per attempt: a retried request returns the first answer.
+  submissionKey      String              @map("submission_key") @db.Uuid
+  /// As typed (trimmed), not verified.
+  fullName           String              @map("full_name") @db.VarChar(200)
+  /// Normalized (uppercase, Western digits), not verified.
+  seatNumber         String              @map("seat_number") @db.VarChar(20)
+  status             AttendanceStatus
+  minutesLate        Int                 @default(0) @map("minutes_late")
+  submittedAt        DateTime            @map("submitted_at") @db.Timestamptz(3)
+  latitude           Float
+  longitude          Float
+  accuracyMeters     Float?              @map("accuracy_meters")
+  distanceMeters     Int?                @map("distance_meters")
+  outcome            GuestCheckInOutcome
+  /// The student whose seat number was typed (RECORDED, and DUPLICATE when matched).
+  studentId          String?             @map("student_id") @db.Uuid
+  /// The record this submission created (RECORDED only).
+  attendanceRecordId String?             @unique @map("attendance_record_id") @db.Uuid
+  /// Whether the typed name matches the matched student's record (spelling-insensitive).
+  nameMatches        Boolean?            @map("name_matches")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  visit            TrainingVisit     @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  student          StudentProfile?   @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  attendanceRecord AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id], onDelete: Restrict)
+
+  @@unique([visitId, submissionKey])
+  @@index([visitId, seatNumber])
+  @@map("guest_check_ins")
 }
 
 /**

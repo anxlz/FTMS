@@ -19,22 +19,26 @@ export const AttendanceErrors = {
     new ApiException(409, 'ATTENDANCE_ALREADY_RECORDED', 'Attendance is already recorded', {
       details: { status: [status] },
     }),
-  biometricRequired: () =>
-    new ApiException(
-      400,
-      'BIOMETRIC_REQUIRED',
-      'Confirm this check-in with biometrics on your registered device',
-    ),
-  biometricNotEnrolled: () =>
-    new ApiException(
-      409,
-      'BIOMETRIC_NOT_ENROLLED',
-      'Enable biometric sign-in on your device before checking in',
-    ),
   geolocationRequired: () =>
     new ApiException(400, 'GEOLOCATION_REQUIRED', 'Share your current location to check in', {
       details: { location: ['GEOLOCATION_REQUIRED'] },
     }),
+  /** The reading's reported accuracy is worse than the program allows. */
+  locationInaccurate: (maxAccuracyMeters: number) =>
+    new ApiException(
+      422,
+      'LOCATION_INACCURATE',
+      `The location reading is not precise enough (at most ${maxAccuracyMeters} m is accepted)`,
+      { details: { location: ['LOCATION_INACCURATE'] } },
+    ),
+  /** The reading is farther from the visit than the program allows. */
+  locationOutsideArea: (radiusMeters: number) =>
+    new ApiException(
+      422,
+      'LOCATION_OUTSIDE_AREA',
+      `The location is outside the permitted area (${radiusMeters} m around the visit)`,
+      { details: { location: ['LOCATION_OUTSIDE_AREA'] } },
+    ),
   visitNotStarted: () =>
     new ApiException(
       409,

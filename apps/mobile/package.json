@@ -1,0 +1,20 @@
+{
+  "name": "@ftms/mobile",
+  "version": "0.8.0",
+  "private": true,
+  "description": "FTMS Android app (Tauri 2): a native shell around the FTMS web app, with the camera QR scanner, device location and optional biometric login.",
+  "type": "module",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "test": "node --test \"scripts/**/*.test.mjs\" \"src/**/*.test.mjs\"",
+    "tauri": "tauri",
+    "native:check": "node scripts/configure.mjs --placeholder && cargo fmt --all --check --manifest-path src-tauri/Cargo.toml && cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings",
+    "native:test": "node scripts/configure.mjs --placeholder && cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml",
+    "android:init": "tauri android init --ci && node scripts/android-icons.mjs",
+    "android:dev": "node scripts/configure.mjs && tauri android dev",
+    "android:build": "node scripts/configure.mjs && tauri android build --apk --aab"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.2"
+  }
+}

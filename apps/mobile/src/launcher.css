@@ -1,0 +1,44 @@
+:root {
+  --brand-navy: #083f5f;
+  --brand-blue: #00507d;
+  --page: #f3f6f8;
+  --text: #0f2533;
+  --muted: #4a6272;
+  font-family: system-ui, 'Segoe UI', Roboto, 'Noto Sans Arabic', sans-serif;
+}
+html,
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--page);
+  color: var(--text);
+}
+main {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--brand-navy);
+}
+p {
+  margin: 0;
+  max-width: 22rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.7rem 1.4rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: var(--brand-blue);
+  color: #fff;
+}

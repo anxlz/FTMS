@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ListUsersResponseSchema, type Role, UserDetailSchema } from '@ftms/core';
 import request from 'supertest';
 import { AttendanceTokens } from '../src/attendance/attendance-tokens';
@@ -708,12 +709,6 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
       expected: STUDENT_ONLY(200),
     },
     {
-      name: 'POST /attendance/check-in/options (window not open yet)',
-      send: (c, t) =>
-        http().post('/attendance/check-in/options').set(as(c)).send({ token: t.checkInToken }),
-      expected: STUDENT_ONLY(409),
-    },
-    {
       name: 'POST /attendance/check-in (window not open yet)',
       send: (c, t) =>
         http()
@@ -967,6 +962,65 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
       send: (c) => http().post('/auth/logout').set(as(c)),
       expected: SIGNED_IN(204),
     },
+    /* ── Phase 8: guest attendance and Android device keys ── */
+    {
+      name: 'POST /attendance/guest/context (public)',
+      send: (c, t) =>
+        http().post('/attendance/guest/context').set(as(c)).send({ token: t.checkInToken }),
+      expected: {
+        SUPER_ADMIN: 200,
+        TRAINING_DIRECTOR: 200,
+        FACULTY: 200,
+        STUDENT: 200,
+        ANONYMOUS: 200,
+      },
+    },
+    {
+      name: 'POST /attendance/guest/check-in (public; window not open yet)',
+      send: (c, t) =>
+        http()
+          .post('/attendance/guest/check-in')
+          .set(as(c))
+          .send({
+            token: t.checkInToken,
+            submissionKey: randomUUID(),
+            fullName: 'Matrix Guest Name',
+            seatNumber: 'M-1',
+            location: { latitude: 30, longitude: 31, accuracy: 10 },
+          }),
+      expected: {
+        SUPER_ADMIN: 409,
+        TRAINING_DIRECTOR: 409,
+        FACULTY: 409,
+        STUDENT: 409,
+        ANONYMOUS: 409,
+      },
+    },
+    {
+      name: 'POST /auth/biometric/device/options',
+      send: (c) => http().post('/auth/biometric/device/options').set(as(c)),
+      expected: SIGNED_IN(200),
+    },
+    {
+      name: 'POST /auth/biometric/device (malformed)',
+      send: (c) => http().post('/auth/biometric/device').set(as(c)).send({}),
+      expected: SIGNED_IN(400),
+    },
+    {
+      name: 'POST /auth/biometric/device/login/options (public)',
+      send: (c) =>
+        http()
+          .post('/auth/biometric/device/login/options')
+          .set(as(c))
+          .send({ credentialId: 'unknown-credential-0123456789' }),
+      expected: {
+        SUPER_ADMIN: 200,
+        TRAINING_DIRECTOR: 200,
+        FACULTY: 200,
+        STUDENT: 200,
+        ANONYMOUS: 200,
+      },
+    },
     /* ── Phase 6: audit log and training-wide reports ── */
     {
       name: 'GET /audit-logs',
@@ -1204,6 +1258,7 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
       'POST /auth/password/reset': 'auth.e2e-spec (public; code-protected)',
       'POST /auth/refresh': 'auth.e2e-spec (public; refresh token rotation and reuse detection)',
       'POST /auth/biometric/login': 'biometrics.e2e-spec (public; assertion-protected)',
+      'POST /auth/biometric/device/login': 'device-keys.e2e-spec (public; signature-protected)',
       'GET /health/ready': 'health.e2e-spec (public; no data)',
     };
     const missing = routes
@@ -1217,6 +1272,10 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         'GET /health',
         'GET /health/ready',
         'GET /local-files/:token',
+        'POST /attendance/guest/check-in',
+        'POST /attendance/guest/context',
+        'POST /auth/biometric/device/login',
+        'POST /auth/biometric/device/login/options',
         'POST /auth/biometric/login',
         'POST /auth/biometric/login/options',
         'POST /auth/code/request',

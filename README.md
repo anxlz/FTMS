@@ -3,20 +3,23 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 7 — security review, accessibility and layout checks in both languages,
-> export validation, production builds with the Vercel CLI, and the final documentation**
-> (on top of Phase 6: activity log and reports; Phase 5: support tickets and mutual group
-> swaps; Phase 4: QR check-in with biometrics and location, lateness, absences,
-> corrections, dashboards and exports; Phase 3: program settings, schedules, visits,
-> calendars, notifications; Phase 2: student records, import, account linking, groups;
-> Phase 1: identity, authentication, roles and permissions, i18n). All seven phases of
-> the master prompt (`docs/master-prompt.md`) are implemented. **Not yet deployed:** the
-> live services (Vercel, Supabase, Upstash, Gmail) need the institution's credentials —
-> see [`docs/limitations.md`](docs/limitations.md). Checkpoints:
+> **Status: Phase 8 — Android app (Tauri 2) with camera QR scanning and the device
+> location; biometric login made optional and for signing in only; guest attendance
+> without an account; a configurable location policy for every check-in** (on top of
+> Phase 7: security review, accessibility, export validation, production builds; Phase 6:
+> activity log and reports; Phase 5: support tickets and mutual group swaps; Phase 4: QR
+> check-in, lateness, absences, corrections, dashboards and exports; Phase 3: program
+> settings, schedules, visits, calendars, notifications; Phase 2: student records, import,
+> account linking, groups; Phase 1: identity, authentication, roles and permissions,
+> i18n). **Not yet deployed:** the live services (Vercel, Supabase, Upstash, Gmail) need
+> the institution's credentials, and **no Android APK/AAB has been built yet** (the build
+> environment had no Android SDK) — see [`docs/limitations.md`](docs/limitations.md).
+> Checkpoints:
 > [`phase-0`](docs/checkpoints/phase-0.md), [`phase-1`](docs/checkpoints/phase-1.md),
 > [`phase-2`](docs/checkpoints/phase-2.md), [`phase-3`](docs/checkpoints/phase-3.md),
 > [`phase-4`](docs/checkpoints/phase-4.md), [`phase-5`](docs/checkpoints/phase-5.md),
-> [`phase-6`](docs/checkpoints/phase-6.md), [`phase-7`](docs/checkpoints/phase-7.md).
+> [`phase-6`](docs/checkpoints/phase-6.md), [`phase-7`](docs/checkpoints/phase-7.md),
+> [`phase-8`](docs/checkpoints/phase-8.md).
 
 ## Documentation
 
@@ -24,31 +27,32 @@ Field training management for the Faculty of Agriculture, Ain Shams University, 
 | ------------------------------------------------------ | ------------------------------------------------------------------- |
 | [`docs/features.md`](docs/features.md)                 | Completed features by role                                          |
 | [`docs/database.md`](docs/database.md)                 | Migrations and schema (generated from the schema and migration SQL) |
-| [`docs/authentication.md`](docs/authentication.md)     | Sign-in, sessions, permissions, biometric sign-in                   |
-| [`docs/attendance-rules.md`](docs/attendance-rules.md) | Attendance and lateness rules, biometric + location check-in        |
+| [`docs/authentication.md`](docs/authentication.md)     | Sign-in, sessions, permissions, optional biometric login            |
+| [`docs/attendance-rules.md`](docs/attendance-rules.md) | Attendance and lateness rules, location policy, guest attendance    |
+| [`docs/mobile.md`](docs/mobile.md)                     | Android app: structure, build, permissions, biometric login, tests  |
 | [`docs/environment.md`](docs/environment.md)           | Every environment variable                                          |
 | [`docs/deployment.md`](docs/deployment.md)             | Build and deployment (Vercel + Supabase + Upstash), rollback        |
 | [`docs/operations.md`](docs/operations.md)             | Backups, recovery, retention, secret rotation                       |
-| [`docs/security-review.md`](docs/security-review.md)   | §17 review, biometric and location data handling, findings          |
+| [`docs/security-review.md`](docs/security-review.md)   | §17 review, biometric, location and guest data handling, findings   |
 | [`docs/testing.md`](docs/testing.md)                   | Test commands and actual results                                    |
 | [`docs/limitations.md`](docs/limitations.md)           | Unresolved issues and limitations                                   |
 | This README                                            | Setup and local development, commands, module overviews             |
 
 ## Stack
 
-| Layer           | Choice                                                                  |
-| --------------- | ----------------------------------------------------------------------- |
-| Monorepo        | Turborepo 2 + pnpm 10 workspaces                                        |
-| Runtime         | Node.js 24 LTS                                                          |
-| Web             | Next.js 16 (App Router, TypeScript) → Vercel                            |
-| API             | NestJS 12 (TypeScript) → Vercel serverless function                     |
-| Database        | Supabase Postgres via Prisma ORM 7 (`@prisma/adapter-pg`)               |
-| Storage         | Supabase Storage, private buckets + signed URLs                         |
-| Cache / limits  | Upstash Redis (REST)                                                    |
-| Email           | Gmail SMTP via Nodemailer, sender `ST22425244@agr.asu.edu.eg`           |
-| Shared code     | `packages/core` — Zod schemas, types, pure business rules               |
-| Tests           | Jest (API), Vitest (web, core), Playwright (browser flows)              |
-| Mobile (future) | Tauri, consuming the same JWT API — `apps/mobile` is reserved and empty |
+| Layer          | Choice                                                        |
+| -------------- | ------------------------------------------------------------- |
+| Monorepo       | Turborepo 2 + pnpm 10 workspaces                              |
+| Runtime        | Node.js 24 LTS                                                |
+| Web            | Next.js 16 (App Router, TypeScript) → Vercel                  |
+| API            | NestJS 12 (TypeScript) → Vercel serverless function           |
+| Database       | Supabase Postgres via Prisma ORM 7 (`@prisma/adapter-pg`)     |
+| Storage        | Supabase Storage, private buckets + signed URLs               |
+| Cache / limits | Upstash Redis (REST)                                          |
+| Email          | Gmail SMTP via Nodemailer, sender `ST22425244@agr.asu.edu.eg` |
+| Shared code    | `packages/core` — Zod schemas, types, pure business rules     |
+| Tests          | Jest (API), Vitest (web, core), Playwright (browser flows)    |
+| Mobile         | Tauri 2 Android shell around the web app (`apps/mobile`)      |
 
 ## Repository layout
 
@@ -56,7 +60,7 @@ Field training management for the Faculty of Agriculture, Ain Shams University, 
 apps/
   api/        NestJS API — all business rules live here
   web/        Next.js frontend (Arabic default, RTL)
-  mobile/     reserved for the future Tauri app — intentionally empty
+  mobile/     Tauri 2 Android app: launcher, Rust shell, device-key plugin (Kotlin)
 packages/
   core/           shared Zod schemas, types and pure helpers
   eslint-config/  shared flat ESLint configs (base / nest / next)
@@ -207,7 +211,7 @@ it requires the Supabase variables at boot.
 | `apps/web/app/icon.png` (192), `apple-icon.png` (180)          | `<link rel="icon">`, Apple touch icon |
 | `apps/web/public/icons/icon-{192,512}.png`, `maskable-512.png` | Web app manifest                      |
 | `apps/web/public/brand/agr-logo.png`                           | Full logo shown in the UI             |
-| `assets/branding/generated/app-icon-1024.png`                  | Master for `tauri icon` (future)      |
+| `assets/branding/generated/app-icon-1024.png`                  | Master for `tauri icon`               |
 | `assets/branding/generated/android/res/mipmap-*/…`             | Android adaptive + legacy + round     |
 | `assets/branding/generated/android/playstore-icon-512.png`     | Play Store listing                    |
 
@@ -216,10 +220,10 @@ layer, so every launcher mask frames it without clipping.
 
 Checked by `apps/web/lib/icons.test.ts` (source hash, every output at its declared size and
 byte count, every Android density including round and adaptive layers) and by the browser
-suite (favicon, icons and every manifest icon served at its declared size). For the future
-Tauri Android app, either point `tauri icon` at `assets/branding/generated/app-icon-1024.png`
-or copy `assets/branding/generated/android/res/` into the generated Android project's
-`app/src/main/res/`.
+suite (favicon, icons and every manifest icon served at its declared size). The Android
+app uses them: `apps/mobile/src-tauri/icons/android/` is a copy of
+`assets/branding/generated/android/res/`, put into the generated Android project by
+`pnpm --filter @ftms/mobile android:init` ([`docs/mobile.md`](docs/mobile.md)).
 
 ## Deployment (Vercel)
 
@@ -248,9 +252,11 @@ script, and drives in Chromium the sign-in, forced password change, email-code a
 language flows, the spreadsheet import, first sign-in of an imported student, signup (both
 matched and reviewed), profile corrections and group moves, program settings, a visit for
 two of three groups (the third sees and receives nothing), document links, cancellation,
-a weekly schedule and a day off, and — with Chromium's virtual platform authenticator and
-a fixed geolocation — biometric enrollment and sign-in, a scanned check-in link that goes
-through sign-in, a confirmed check-in, faculty corrections and a report download, then a
+a weekly schedule and a day off, and — with a fixed geolocation — a scanned check-in link
+that offers Log In or Continue as Guest, a signed-in check-in with no biometric step, a
+guest submission (matched and unmatched), optional biometric login turned on and used
+(Chromium's virtual platform authenticator), faculty review of guest submissions,
+corrections and a report download, then a
 complaint with an attachment answered and resolved by staff (with an internal note the
 student never sees) and a group swap accepted by the other student and approved by the
 faculty, checked from both students' side and in the audit history, and finally a
@@ -353,21 +359,27 @@ violations. Commands and the latest recorded results: [`docs/testing.md`](docs/t
   an HMAC-SHA256 tag (`QR_HMAC_SECRET`): stable for the whole visit, so one printout
   serves every session, impossible to forge for another visit, and free of personal data.
   Staff print both from `/visits/<id>/qr`. The code grants nothing by itself.
-- **Check-in (§7.2, §8.5).** A scanned link sends a signed-out student through sign-in and
-  back. The API then checks, in order: a valid token; an active, verified student; of one
-  of the visit's groups; a visit that is not cancelled; no existing record; the server
-  time inside the window; the location reading; a fresh biometric assertion bound to this
-  student **and this visit** (a sign-in session never counts). Only then is one record
-  created; the database's unique key turns a concurrent duplicate into "already recorded".
-  Values sent by the browser (status, minutes, flags) are ignored. Check-ins are
-  rate-limited per student.
-- **Biometrics and location.** A student with biometric sign-in enabled always confirms
-  with it and sends the device location. For students without it, the Training Director
-  chooses the fallback (`/settings`): allow the check-in, marked "not confirmed with
-  biometrics", or refuse it until biometrics are enabled; and whether the location is
-  required. Coordinates and accuracy are stored with the record (and the distance from
-  the visit's coordinates when known) for faculty review only; they are supporting
-  context, not proof of presence. The audit log notes that a reading was sent, not where.
+- **Check-in (§7.2, §8.5, revised in Phase 8).** A scanned link offers **Log In** or
+  **Continue as Guest** when signed out. Signed in, the API checks, in order: a valid
+  token; an active, verified student; of one of the visit's groups; a visit that is not
+  cancelled; no existing record; the server time inside the window; a location reading
+  that satisfies the location policy. Only then is one record created; the database's
+  unique key turns a concurrent duplicate into "already recorded". Values sent by the
+  browser (status, minutes, flags) are ignored. Check-ins are rate-limited per student.
+  **Attendance never involves biometrics.**
+- **Location policy (Phase 8).** Every check-in — signed in or guest — must send a current
+  reading. The Training Director may require a maximum distance from the visit (visits
+  with coordinates) and a minimum accuracy (`/schedule`, empty = no limit); the API
+  refuses with a specific reason (no reading, inaccurate, outside the area). Readings are
+  stored for staff review; they are supporting evidence, not proof of presence. The audit
+  log notes that a reading was sent, not where.
+- **Guest attendance (Phase 8).** No login, account, password, code or identity check:
+  the guest types a full name and seat number and the location is sent. The server applies
+  the token, window and location policy and rate limits per IP; a seat number of a visit
+  member with no record becomes that student's record (`GUEST`, notified), otherwise the
+  submission is kept for staff review; the guest gets the same receipt either way.
+  **The typed identity is not verified** — by design; see
+  [`docs/attendance-rules.md`](docs/attendance-rules.md#guest-attendance-phase-8).
 - **Classification (§8.2).** Minutes are whole minutes since the start, rounded down:
   `m = floor((check-in − start) / 1 min)`. Present when `−opens ≤ m ≤ grace`; Late when
   `grace < m ≤ closes`, with `m − grace` minutes late; refused otherwise. For a 10:00
@@ -396,17 +408,35 @@ CONFLICT DO NOTHING` on the one-record-per-student key), so repeated or overlapp
   student, status; at most 10,000 rows (3,000 for PDF). Needs `attendance.read` and
   `reports.export`; each export is audited.
 
-## Biometric sign-in (§4.5)
+## Biometric login (optional)
 
-Platform passkeys (WebAuthn) with user verification: the phone or laptop checks the
-fingerprint or face; the server stores only the credential's public key and counter.
-Students and staff enable it from `/profile` after a password or email-code sign-in (a
-biometric session cannot enroll another device), name each device, and remove it there —
-removal takes effect at once and ends the sessions that device opened. Sign-in is
-usernameless ("Sign in with fingerprint or face"), so it reveals no account. Password and
-email-code sign-in always remain. The relying party is the web app's host
-(`WEB_APP_URL`, or `WEBAUTHN_RP_ID` for a parent domain); browsers require HTTPS outside
-`localhost`.
+Biometric login is an optional convenience feature for signing in. It is not required
+for attendance. Off by default; users turn it on or off in **Profile → Security** after a
+password or email-code sign-in (a biometric session cannot enroll another device). In a
+browser it is a platform passkey (WebAuthn, user verification required); in the Android
+app it is an EC P-256 key in the Android Keystore that signs a server challenge only right
+after a strong biometric check. The server stores only public keys. Removing or turning
+it off takes effect at once and ends the sessions that device opened; offline, the app
+says it was not turned off. Password and email-code sign-in always remain. Details:
+[`docs/authentication.md`](docs/authentication.md#biometric-login-optional).
+
+## Android app (Phase 8)
+
+`apps/mobile` is a Tauri 2 shell around the deployed web app: a bundled launcher checks
+the connection and opens the web app, which then uses the camera QR scanner, the device
+location and the optional biometric login. The app holds no secrets — only the web app's
+address (`FTMS_WEB_URL`); only that origin may load or call native code.
+
+```bash
+pnpm --filter @ftms/mobile test                     # Node tests
+pnpm --filter @ftms/mobile native:test              # Rust tests (host target)
+pnpm --filter @ftms/mobile android:init             # needs the Android SDK + NDK
+FTMS_WEB_URL=https://… pnpm --filter @ftms/mobile android:build
+```
+
+**No APK/AAB has been built yet**: the Phase 8 environment had no Android SDK/NDK and no
+access to Google Maven or the Rust Android targets. Prerequisites, signing, permissions
+and the device checklist: [`docs/mobile.md`](docs/mobile.md).
 
 ## Support tickets and group swaps (Phase 5)
 
@@ -489,8 +519,8 @@ email-code sign-in always remain. The relying party is the web app's host
 
 ## Security (Phase 7)
 
-The §17 review, the handling of biometric credentials and location readings, and the
-findings fixed in Phase 7 are in [`docs/security-review.md`](docs/security-review.md). In
+The §17 review, the handling of biometric credentials, location readings, guest
+submissions and the Android app, and the findings fixed in Phase 7 are in [`docs/security-review.md`](docs/security-review.md). In
 short: both apps send strict security headers (a per-request nonce CSP on the web app);
 search text is matched literally; every route is covered by the role matrix and every
 input by a validation pipe (both enforced by tests); exports are rate-limited per

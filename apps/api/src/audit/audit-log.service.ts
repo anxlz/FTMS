@@ -264,6 +264,19 @@ export class AuditLogService {
           ? found(`${r.student.fullName} · ${r.student.seatNumber} — ${r.visit.title}`, r.visitId)
           : missing;
       }
+      case 'guest_check_in': {
+        // Typed by a guest, not verified: shown as typed, with its visit.
+        const g = await p.guestCheckIn.findUnique({
+          where: { id },
+          select: {
+            fullName: true,
+            seatNumber: true,
+            visitId: true,
+            visit: { select: { title: true } },
+          },
+        });
+        return g ? found(`${g.fullName} · ${g.seatNumber} — ${g.visit.title}`, g.visitId) : missing;
+      }
       case 'ticket': {
         const t = await p.supportTicket.findUnique({
           where: { id },

@@ -118,8 +118,20 @@ export default async function SchedulePage({
               <div>
                 <dt>{t('schedule.policy.title')}</dt>
                 <dd>
-                  {t(`schedule.policy.fallback.${program.checkInPolicy.biometricFallback}`)} ·{' '}
-                  {t(`schedule.policy.location.${program.checkInPolicy.geolocation}`)}
+                  {t('schedule.policy.summary', {
+                    radius:
+                      program.checkInPolicy.radiusMeters === null
+                        ? t('schedule.policy.noLimit')
+                        : t('schedule.policy.meters', {
+                            meters: program.checkInPolicy.radiusMeters,
+                          }),
+                    accuracy:
+                      program.checkInPolicy.maxAccuracyMeters === null
+                        ? t('schedule.policy.noLimit')
+                        : t('schedule.policy.meters', {
+                            meters: program.checkInPolicy.maxAccuracyMeters,
+                          }),
+                  })}
                 </dd>
               </div>
             </dl>

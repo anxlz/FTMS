@@ -11,6 +11,7 @@ import {
   todayIn,
 } from '@ftms/core';
 import { getFormatter, getTranslations } from 'next-intl/server';
+import { AppCheckIn } from '@/components/app-check-in';
 import { AttendanceBadge } from '@/components/attendance-badge';
 import { ExportForm } from '@/components/export-form';
 import { timeRange, VisitStatus } from '@/components/month-calendar';
@@ -67,6 +68,7 @@ async function StudentAttendance() {
   return (
     <div className="stack-lg">
       <h1>{t('title')}</h1>
+      <AppCheckIn />
       {summary ? (
         <section className="card stack" aria-labelledby="summary-title">
           <h2 id="summary-title">{t('summary')}</h2>

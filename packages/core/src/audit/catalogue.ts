@@ -69,6 +69,7 @@ export const AUDIT_ACTIONS = [
   'visit.file_removed',
   // Attendance
   'attendance.checked_in',
+  'attendance.guest_submitted',
   'attendance.corrected',
   'attendance.absences_recorded',
   // Tickets
@@ -109,6 +110,7 @@ export const AUDIT_RESOURCE_TYPES = [
   'schedule_exception',
   'visit',
   'attendance',
+  'guest_check_in',
   'ticket',
   'group_swap',
   'report',

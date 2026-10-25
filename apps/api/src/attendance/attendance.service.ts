@@ -24,6 +24,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { byName, fromDbDate, fromDbTime, timingOf } from '../scheduling/db-values';
 import { SchedulingErrors } from '../scheduling/scheduling-errors';
 import { AbsencesService } from './absences.service';
+import { GuestCheckInService } from './guest-check-in.service';
 import { AttendanceErrors } from './attendance-errors';
 import { RECORD_INCLUDE, recordSnapshot, toRecord } from './attendance-mapping';
 
@@ -39,6 +40,7 @@ export class AttendanceService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly absences: AbsencesService,
+    private readonly guests: GuestCheckInService,
     private readonly clock: Clock,
   ) {}
 
@@ -162,6 +164,7 @@ export class AttendanceService {
       absencesProcessed: visit.absencesProcessedAt !== null,
       counts,
       rows: filtered,
+      guestSubmissions: await this.guests.forVisit(visit.id),
     };
   }
 

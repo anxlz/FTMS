@@ -68,7 +68,8 @@
       "forgot": "Forgot your password?",
       "firstTime": "First time here, or no password yet? Choose “Email code”.",
       "signup": "New student? Create your account",
-      "checkInFirst": "Sign in to record your attendance for this visit. You will return to it right after."
+      "checkInFirst": "Sign in to record your attendance for this visit. You will return to it right after.",
+      "continueAsGuest": "Continue as Guest"
     },
     "code": {
       "intro": "First sign-in: we email a 6-digit code to your university address, then you set a password.",
@@ -218,15 +219,13 @@
     "CHECK_IN_NOT_OPEN": "Check-in for this visit has not opened yet.",
     "CHECK_IN_CLOSED": "Check-in for this visit has closed.",
     "ATTENDANCE_ALREADY_RECORDED": "Your attendance for this visit is already recorded.",
-    "BIOMETRIC_REQUIRED": "Confirm this check-in with your fingerprint or face on your registered device.",
-    "BIOMETRIC_NOT_ENROLLED": "Enable biometric sign-in on your device before checking in.",
-    "BIOMETRIC_FAILED": "Biometric confirmation failed. Try again.",
+    "BIOMETRIC_FAILED": "The biometric check failed. Try again, or sign in with your password.",
     "BIOMETRIC_REAUTH_REQUIRED": "Sign in with your password or an email code to enable biometric sign-in on a device.",
     "BIOMETRIC_CREDENTIAL_EXISTS": "This device is already registered for biometric sign-in.",
     "BIOMETRIC_CANCELLED": "The biometric check was cancelled or timed out.",
     "BIOMETRIC_UNSUPPORTED": "This device or browser cannot do biometric sign-in.",
     "GEOLOCATION_REQUIRED": "Share your current location to check in.",
-    "GEOLOCATION_DENIED": "Location access is blocked. Allow location for this site in your browser settings, then try again.",
+    "GEOLOCATION_DENIED": "Location access is blocked. Allow location access, then try again.",
     "GEOLOCATION_UNAVAILABLE": "Your location could not be determined. Move to an open area and try again.",
     "VISIT_NOT_STARTED": "Attendance can be recorded once check-in for the visit has opened.",
     "EXPORT_TOO_LARGE": "The report is too large. Narrow it with filters (dates, group, status).",
@@ -247,7 +246,11 @@
     "SUBJECT_REQUIRED": "Enter a subject (at least 3 characters).",
     "DESCRIPTION_REQUIRED": "Describe the issue (at least 3 characters).",
     "MESSAGE_REQUIRED": "Write a message.",
-    "REASON_REQUIRED": "Give a reason (at least 3 characters)."
+    "REASON_REQUIRED": "Give a reason (at least 3 characters).",
+    "LOCATION_INACCURATE": "Your location is not accurate enough to record attendance.",
+    "LOCATION_OUTSIDE_AREA": "You are outside the permitted area for this visit.",
+    "BIOMETRIC_LOCKOUT": "Too many failed attempts. Unlock your phone with its PIN, pattern or password, then try again.",
+    "BIOMETRIC_KEY_INVALIDATED": "Biometric login on this phone stopped working because the phone's fingerprints or face data changed. Sign in with your password, then turn it on again."
   },
   "dashboard": {
     "welcome": "Welcome, {name}",
@@ -946,18 +949,15 @@
       }
     },
     "policy": {
-      "title": "Check-in confirmation",
-      "intro": "Students with biometric sign-in always confirm with it and send their location. Choose what happens for students who have not enabled it (for example, devices without biometrics).",
-      "biometricFallback": "Without biometric sign-in",
-      "geolocation": "Location for those check-ins",
-      "fallback": {
-        "ALLOW_UNVERIFIED": "Allow check-in, marked as not confirmed with biometrics",
-        "REQUIRE_BIOMETRIC": "Refuse check-in until biometrics are enabled"
-      },
-      "location": {
-        "REQUIRED": "Location required",
-        "OPTIONAL": "Location optional"
-      }
+      "title": "Check-in location rules",
+      "intro": "Every check-in — signed in or guest — sends the device's current location. Optionally limit how far from the visit it may be (for visits with map coordinates) and how precise the reading must be. Leave a field empty for no limit. Biometrics are never required for attendance.",
+      "radius": "Maximum distance from the visit (m)",
+      "radiusHint": "10–100000. Empty: no distance limit.",
+      "accuracy": "Required location accuracy (m)",
+      "accuracyHint": "5–10000. Empty: any accuracy.",
+      "noLimit": "No limit",
+      "meters": "{meters} m",
+      "summary": "Distance: {radius} · Accuracy: {accuracy}"
     }
   },
   "notifications": {
@@ -1004,10 +1004,10 @@
         "LATE": "Now: late ({minutes, plural, one {1 minute} other {# minutes}}).",
         "ABSENT": "Now: absent."
       },
-      "biometricEnabled": "Biometric sign-in enabled",
+      "biometricEnabled": "Biometric login turned on",
       "biometricEnabledBody": "Enabled on “{device}”. If this was not you, remove it from your profile and change your password.",
-      "biometricRevoked": "Biometric sign-in removed",
-      "biometricRevokedBody": "“{device}” can no longer sign in or confirm attendance.",
+      "biometricRevoked": "Biometric login turned off",
+      "biometricRevokedBody": "“{device}” can no longer sign you in.",
       "ticketReplied": "New reply on ticket #{number}",
       "ticketStatus": {
         "OPEN": "Ticket #{number} is open again",
@@ -1031,7 +1031,9 @@
       "swapWithdrawn": "{name} withdrew the swap request",
       "swapWithdrawnBody": "Nothing changes for you.",
       "swapCancelled": "Swap request closed",
-      "swapCancelledBody": "A student's group changed after the request was made, so it was closed. Nothing was exchanged."
+      "swapCancelledBody": "A student's group changed after the request was made, so it was closed. Nothing was exchanged.",
+      "attendanceGuestRecorded": "Attendance recorded with the guest form: {title}",
+      "attendanceGuestRecordedBody": "Someone submitted the guest form with your seat number. If this was not you, contact the training staff."
     }
   },
   "biometrics": {
@@ -1039,23 +1041,43 @@
     "signIn": "Sign in with fingerprint or face",
     "signInHint": "Uses biometric sign-in you enabled on this device. Your fingerprint or face never leaves the device.",
     "waiting": "Waiting for your device…",
-    "profileTitle": "Biometric sign-in",
-    "profileIntro": "Sign in and confirm attendance with your device's fingerprint or face recognition. The check happens on your device: only a public key is stored, never your fingerprint or face.",
-    "noDevices": "Biometric sign-in is not enabled on any device.",
+    "profileTitle": "Biometric login",
+    "profileIntro": "Sign in with your device's fingerprint or face recognition instead of typing your password. The check happens on your device: only a public key is stored, never your fingerprint or face.",
+    "noDevices": "Biometric login is not turned on for any device.",
     "synced": "Synced passkey",
     "added": "Added {date}",
     "lastUsed": "last used {date}",
     "neverUsed": "not used yet",
     "reauthNote": "You signed in with biometrics. To enable another device, sign in with your password or an email code first.",
-    "unsupported": "This browser or device does not support biometric sign-in. You can keep using your password.",
+    "unsupported": "This browser or device does not support biometric login. You can keep using your password or an email code.",
     "enableTitle": "Enable on this device",
-    "enabled": "Biometric sign-in is enabled on this device.",
-    "continueCheckIn": "Continue to check-in",
+    "enabled": "Biometric login is on for this device.",
     "deviceName": "Device name",
     "deviceNameHint": "A name you will recognize, e.g. “My phone”.",
-    "enable": "Enable biometric sign-in",
+    "enable": "Turn on biometric login",
     "remove": "Remove",
-    "removeConfirm": "Remove “{name}”? It will no longer sign in or confirm attendance, and sessions opened with it end now."
+    "removeConfirm": "Remove “{name}”? It will no longer sign you in, and sessions opened with it end now.",
+    "optionalNotice": "Biometric login is an optional convenience feature for signing in. It is not required for attendance.",
+    "disabled": "Biometric login is off for this device.",
+    "kindApp": "Android app",
+    "kindPasskey": "Passkey",
+    "defaultDeviceName": "My phone",
+    "promptTitle": "Sign in to Field Training",
+    "promptSubtitle": "Confirm with your fingerprint or face",
+    "promptEnableSubtitle": "Confirm to turn on biometric login",
+    "promptCancel": "Cancel",
+    "thisPhone": "This phone",
+    "stateOn": "Biometric login is on for this phone.",
+    "stateOff": "Biometric login is off for this phone.",
+    "turnOn": "Turn on biometric login",
+    "turnOff": "Turn off biometric login",
+    "offlineNotRevoked": "Biometric login was not turned off: the server could not be reached, so it is still registered for your account. Try again when you are online. You can remove the key from this phone now, but the registration stays until you remove it here while online.",
+    "removeLocalOnly": "Remove from this phone only",
+    "orphaned": "Biometric login for this phone was turned off elsewhere (from another device or by the faculty). Remove the leftover key from this phone; you can turn it on again afterwards.",
+    "unavailableOnPhone": "This phone has no strong fingerprint or face unlock set up, so biometric login is not available. Password and email-code sign-in work as usual.",
+    "deviceFailedHint": "If this keeps failing, biometric login may have been turned off for this phone.",
+    "forgetOnDevice": "Remove it from this phone",
+    "optionalNote": "Optional. You can always sign in with your password or an email code."
   },
   "checkIn": {
     "title": "Visit check-in",
@@ -1065,8 +1087,6 @@
     "recorded": "Attendance recorded",
     "alreadyRecorded": "Your attendance is already recorded",
     "at": "Checked in at {time}",
-    "biometricConfirmed": "Confirmed with biometrics.",
-    "biometricNotConfirmed": "Not confirmed with biometrics.",
     "locationShared": "Location shared.",
     "corrected": "Updated by the training staff.",
     "myAttendance": "My attendance",
@@ -1077,19 +1097,16 @@
     "notOpen": "Check-in opens at {time}.",
     "refresh": "Refresh",
     "closed": "Check-in for this visit has closed.",
-    "requiresBiometric": "You will confirm with your fingerprint or face, and your device location will be sent with the check-in.",
-    "fallbackAllowed": "Biometric sign-in is not enabled on your account, so this check-in will be marked as not confirmed with biometrics.",
-    "fallbackBlocked": "Biometric confirmation is required to check in. Enable biometric sign-in on this device first.",
-    "enableBiometrics": "Enable biometrics",
-    "noWebAuthn": "This browser cannot do biometric confirmation. Open the link in your phone's main browser.",
-    "locationRequired": "Your current location is required and is sent once, with this check-in.",
-    "locationOptional": "Your current location is sent with the check-in if your device shares it.",
     "locating": "Getting your location…",
-    "confirming": "Confirm on your device…",
     "sending": "Recording…",
-    "confirmAndCheckIn": "Confirm with biometrics and check in",
     "checkIn": "Check in",
-    "serverTime": "Times follow the server clock (Cairo time). Server time when this page opened: {time}."
+    "serverTime": "Times follow the server clock (Cairo time). Server time when this page opened: {time}.",
+    "tryAgain": "Try again",
+    "viaGuest": "Submitted with the guest form.",
+    "chooseIntro": "Record your attendance for this visit.",
+    "logIn": "Log In",
+    "continueAsGuest": "Continue as Guest",
+    "guestNote": "As a guest you need no account: type your full name and seat number, and your location is checked. Typed details are not verified."
   },
   "attendance": {
     "title": "My attendance",
@@ -1104,7 +1121,8 @@
     "source": {
       "QR": "QR check-in",
       "MANUAL": "Faculty correction",
-      "AUTOMATIC": "Automatic (no check-in)"
+      "AUTOMATIC": "Automatic (no check-in)",
+      "GUEST": "Guest form"
     },
     "loadFailed": "Attendance could not be loaded. Try again shortly.",
     "summary": "Summary",
@@ -1187,8 +1205,6 @@
     "notExpected": "Left the group",
     "notExpectedHint": "Has a record for this visit but is no longer in one of its groups.",
     "notRecorded": "Not recorded",
-    "biometricYes": "Biometric confirmed",
-    "biometricNo": "Not biometric",
     "accuracy": "±{meters} m",
     "distance": "{meters} m from the site",
     "correctedBy": "Corrected by {name}, {at}",
@@ -1203,7 +1219,21 @@
       "record": "Record attendance"
     },
     "locationNote": "Locations are supporting information submitted by the student's device; they can be spoofed and are not proof of presence on their own.",
-    "correctionLater": "Corrections become available once check-in opens."
+    "correctionLater": "Corrections become available once check-in opens.",
+    "guest": {
+      "title": "Guest submissions",
+      "intro": "Submitted with the guest form, without signing in. The typed name and seat number are not verified. When the seat number belonged to a student of this visit with no record yet, the submission became that student's attendance record (shown as “Guest form”); review it and correct it if needed.",
+      "none": "No guest submissions for this visit.",
+      "typedName": "Typed name",
+      "typedSeat": "Typed seat number",
+      "outcome": "Result",
+      "outcomes": {
+        "RECORDED": "Recorded as the attendance of",
+        "DUPLICATE": "Not used: attendance was already recorded",
+        "UNMATCHED": "No student of this visit has this seat number"
+      },
+      "nameDiffers": "Name differs"
+    }
   },
   "qr": {
     "title": "Visit QR codes",
@@ -1213,7 +1243,7 @@
     "intro": "Print this page once and display it at the visit. The attendance code stays the same for the whole visit; it only works during the check-in window, and only for signed-in students of the visit's groups.",
     "attendanceAlt": "Attendance QR code for {title}",
     "attendanceTitle": "Attendance — scan to check in",
-    "attendanceCaption": "Sign in, then confirm with your fingerprint or face.",
+    "attendanceCaption": "Scan to record attendance: log in, or continue as a guest. Your location is checked.",
     "detailsAlt": "Visit details QR code for {title}",
     "detailsTitle": "Visit details",
     "detailsCaption": "Opens the visit page (sign-in required).",
@@ -1222,7 +1252,7 @@
   "settings": {
     "title": "Training settings",
     "defaults": "Training-wide defaults",
-    "rules": "New visits start with these times; changing them never alters existing visits. A student with biometric sign-in enabled always confirms check-in with biometrics and the device location. The policy below decides what happens for students without it.",
+    "rules": "New visits start with these times; changing them never alters existing visits. Every check-in sends the device location, checked against the rules below. Biometrics are never required for attendance.",
     "directorOnly": "Only the Training Director changes these defaults.",
     "perVisit": "One visit's times",
     "perVisitHint": "Authorized faculty can set different check-in times for a single visit from its edit page, until its check-in opens.",
@@ -1556,7 +1586,8 @@
         "checked_in": "Check-in",
         "corrected": "Attendance corrected",
         "absences_recorded": "Absences recorded automatically",
-        "exported": "Attendance report exported"
+        "exported": "Attendance report exported",
+        "guest_submitted": "Guest attendance submitted"
       },
       "ticket": {
         "created": "Ticket opened",
@@ -1598,7 +1629,7 @@
     "resources": {
       "user": "Account",
       "auth_session": "Session",
-      "webauthn_credential": "Biometric device",
+      "webauthn_credential": "Biometric login device",
       "student": "Student record",
       "student_verification_request": "Verification request",
       "profile_change_request": "Profile correction",
@@ -1612,7 +1643,8 @@
       "ticket": "Ticket",
       "group_swap": "Group-swap request",
       "report": "Report",
-      "audit_log": "Activity log"
+      "audit_log": "Activity log",
+      "guest_check_in": "Guest submission"
     },
     "fields": {
       "title": "Title",
@@ -1697,7 +1729,14 @@
       "sessionsRevoked": "Sessions ended",
       "otherSessionsRevoked": "Other sessions ended",
       "importId": "Import",
-      "accountCreated": "Account created"
+      "accountCreated": "Account created",
+      "outcome": "Result",
+      "attendanceRecordId": "Attendance record",
+      "nameMatches": "Name matches",
+      "radiusMeters": "Distance limit (m)",
+      "maxAccuracyMeters": "Accuracy limit (m)",
+      "deviceName": "Device",
+      "credentialId": "Credential"
     },
     "title": "Activity log",
     "intro": "Every recorded action: who did it (name and role at the time), what changed, when, and the outcome. The log cannot be changed or deleted.",
@@ -1823,7 +1862,13 @@
       "WITHDRAWN": "Withdrawn",
       "PASSWORD": "Password",
       "EMAIL_CODE": "Emailed code",
-      "BIOMETRIC": "Biometrics"
+      "BIOMETRIC": "Biometrics",
+      "GUEST": "Guest form",
+      "RECORDED": "Recorded",
+      "DUPLICATE": "Already recorded",
+      "UNMATCHED": "No match",
+      "PASSKEY": "Passkey",
+      "ANDROID_KEY": "Android app key"
     },
     "yes": "Yes",
     "no": "No"
@@ -1884,5 +1929,61 @@
     "retry": "Try again",
     "dashboard": "Go to the dashboard",
     "loading": "Loading…"
+  },
+  "scan": {
+    "title": "Check in to a visit",
+    "signedInIntro": "Scan the QR code shown at the visit. Your location is checked when you check in; biometric login is not needed.",
+    "scan": "Scan QR code",
+    "scanning": "Point the camera at the visit's QR code",
+    "cancel": "Cancel",
+    "paste": "Attendance link",
+    "orPaste": "Or paste the attendance link",
+    "openLink": "Open",
+    "openSettings": "Open app settings",
+    "errors": {
+      "CAMERA_DENIED": "Camera access is blocked. Allow the camera for Field Training in the app settings, then try again.",
+      "SCAN_UNAVAILABLE": "The camera scanner is not available on this device. Paste the attendance link instead.",
+      "QR_INVALID": "This is not a Field Training attendance code."
+    }
+  },
+  "guest": {
+    "title": "Guest attendance",
+    "intro": "Record attendance for a visit without an account.",
+    "factNoAccount": "No account, password or code is needed.",
+    "factLocation": "Your current location is sent and checked against the visit's location rules.",
+    "factNotVerified": "The name and seat number you type are not verified. Enter your own details only.",
+    "browserHint": "No app? Scan the QR code with your phone's camera to open its link, or paste the link above.",
+    "toLogin": "Have an account? Log in",
+    "formTitle": "Guest check-in",
+    "signInInstead": "Have an account? Log in instead",
+    "scanAnother": "Scan another code",
+    "fullName": "Full name",
+    "seatNumber": "Seat number",
+    "notVerifiedNotice": "Your name and seat number are recorded as you type them. They are not verified, and the training staff may review this submission.",
+    "received": "Attendance submission received",
+    "reference": "Reference:",
+    "retry": "Try again",
+    "submit": "Submit attendance"
+  },
+  "location": {
+    "required": "Your current location is required and is sent once, with this check-in.",
+    "radius": "You must be within {meters} m of the visit location.",
+    "accuracy": "Your location must be accurate to {meters} m or better.",
+    "readAccuracy": "Location found (accurate to about {meters} m).",
+    "readNoAccuracy": "Location found (the device did not report its accuracy).",
+    "help": {
+      "GEOLOCATION_REQUIRED": "Share your current location to continue.",
+      "GEOLOCATION_DENIED": "Allow location access for Field Training (in the app settings, or for this site in your browser settings), then try again.",
+      "GEOLOCATION_UNAVAILABLE": "Turn on location services, move to an open area, then try again.",
+      "LOCATION_INACCURATE": "Your device's location is not precise enough. Turn on precise (GPS) location, wait a few seconds in an open area, then try again.",
+      "LOCATION_OUTSIDE_AREA": "You appear to be outside the visit area. Move closer to the visit location, then try again."
+    }
+  },
+  "start": {
+    "title": "Welcome",
+    "intro": "Sign in to your account, or record your attendance for a visit as a guest.",
+    "logIn": "Log In",
+    "continueAsGuest": "Continue as Guest",
+    "guestNote": "Guest attendance needs no account: scan the visit’s QR code, type your full name and seat number, and share your location. Typed details are not verified."
   }
 }

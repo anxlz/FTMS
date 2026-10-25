@@ -13,8 +13,15 @@ import {
   type BiometricCredential,
   type BiometricLoginRequest,
   BiometricLoginRequestSchema,
+  type DeviceKeyChallenge,
+  type DeviceKeyLoginOptionsRequest,
+  DeviceKeyLoginOptionsRequestSchema,
+  type DeviceKeyLoginRequest,
+  DeviceKeyLoginRequestSchema,
   type RegisterCredentialRequest,
   RegisterCredentialRequestSchema,
+  type RegisterDeviceKeyRequest,
+  RegisterDeviceKeyRequestSchema,
   type RevokeCredentialRequest,
   RevokeCredentialRequestSchema,
   type WebAuthnOptionsResponse,
@@ -28,8 +35,10 @@ import { BiometricsService } from './biometrics.service';
 const uuid = new ParseUUIDPipe({ version: '7' });
 
 /**
- * Biometric sign-in (§4.5): usernameless WebAuthn login, and each account's own
- * devices — enroll, list, revoke. Password and email-code sign-in always remain.
+ * Optional biometric sign-in (§4.5, Phase 8): usernameless WebAuthn login in
+ * browsers, Android Keystore keys in the app, and each account's own devices —
+ * enroll, list, revoke (one revocation route for both kinds). Password and
+ * email-code sign-in always remain. Attendance never uses any of this.
  */
 @Controller('auth/biometric')
 export class BiometricsController {
@@ -72,6 +81,46 @@ export class BiometricsController {
     @Ctx() context: RequestContext,
   ): Promise<BiometricCredential> {
     return this.biometrics.register(principal, body, context);
+  }
+
+  /* ── Android device keys (Phase 8) ── */
+
+  @Post('device/options')
+  @HttpCode(200)
+  deviceRegistrationOptions(
+    @CurrentPrincipal() principal: AuthPrincipal,
+  ): Promise<DeviceKeyChallenge> {
+    return this.biometrics.deviceRegistrationOptions(principal);
+  }
+
+  @Post('device')
+  registerDevice(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(RegisterDeviceKeyRequestSchema)) body: RegisterDeviceKeyRequest,
+    @Ctx() context: RequestContext,
+  ): Promise<BiometricCredential> {
+    return this.biometrics.registerDevice(principal, body, context);
+  }
+
+  @Public()
+  @Post('device/login/options')
+  @HttpCode(200)
+  deviceLoginOptions(
+    @Body(new ZodValidationPipe(DeviceKeyLoginOptionsRequestSchema))
+    body: DeviceKeyLoginOptionsRequest,
+    @Ctx() context: RequestContext,
+  ): Promise<DeviceKeyChallenge> {
+    return this.biometrics.deviceLoginOptions(body, context);
+  }
+
+  @Public()
+  @Post('device/login')
+  @HttpCode(200)
+  deviceLogin(
+    @Body(new ZodValidationPipe(DeviceKeyLoginRequestSchema)) body: DeviceKeyLoginRequest,
+    @Ctx() context: RequestContext,
+  ): Promise<AuthResponse> {
+    return this.biometrics.deviceLogin(body, context);
   }
 
   @Delete('credentials/:id')

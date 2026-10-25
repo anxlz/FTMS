@@ -3,8 +3,12 @@ import { type VisitTiming } from '../scheduling/contracts';
 export const ATTENDANCE_STATUSES = ['PRESENT', 'LATE', 'ABSENT'] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
-/** How a record came to be: a QR check-in, a faculty correction, or the absence job. */
-export const ATTENDANCE_SOURCES = ['QR', 'MANUAL', 'AUTOMATIC'] as const;
+/**
+ * How a record came to be: a signed-in QR check-in, a faculty correction, the
+ * absence job, or a guest submission whose typed seat number matched (Phase 8;
+ * identity not verified).
+ */
+export const ATTENDANCE_SOURCES = ['QR', 'MANUAL', 'AUTOMATIC', 'GUEST'] as const;
 export type AttendanceSource = (typeof ATTENDANCE_SOURCES)[number];
 
 const MINUTE = 60_000;
@@ -86,7 +90,7 @@ export function attendanceTotals(
   };
 }
 
-/** Great-circle distance in metres (supporting context only, §7.2 — never proof of presence). */
+/** Great-circle distance in metres between a reading and the visit's coordinates. */
 export function distanceMeters(
   a: { latitude: number; longitude: number },
   b: { latitude: number; longitude: number },

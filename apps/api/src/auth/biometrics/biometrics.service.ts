@@ -1,9 +1,20 @@
+import {
+  createPublicKey,
+  type KeyObject,
+  randomBytes,
+  verify as verifySignature,
+} from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   type AuthResponse,
   type BiometricCredential,
   type BiometricLoginRequest,
+  type DeviceKeyChallenge,
+  type DeviceKeyLoginOptionsRequest,
+  type DeviceKeyLoginRequest,
+  deviceKeyMessage,
   type RegisterCredentialRequest,
+  type RegisterDeviceKeyRequest,
   type WebAuthnOptionsResponse,
   type WebAuthnResponseJson,
 } from '@ftms/core';
@@ -59,6 +70,8 @@ export const BiometricErrors = {
 
 const toCredential = (c: WebAuthnCredential): BiometricCredential => ({
   id: c.id,
+  kind: c.kind,
+  credentialId: c.credentialId,
   name: c.name,
   createdAt: c.createdAt.toISOString(),
   lastUsedAt: c.lastUsedAt?.toISOString() ?? null,
@@ -66,10 +79,12 @@ const toCredential = (c: WebAuthnCredential): BiometricCredential => ({
 });
 
 /**
- * Biometric sign-in with platform authenticators (WebAuthn passkeys, §4.5).
- * The device's operating system performs the biometric check; the server only
- * stores public keys and verifies signed assertions. No biometric data, private
- * key or raw assertion is ever stored or audited.
+ * Optional biometric sign-in (§4.5, Phase 8): WebAuthn passkeys in browsers, and
+ * Android Keystore keys in the FTMS Android app. The device's operating system
+ * performs the biometric check; the server only stores public keys and verifies
+ * signatures over its own single-use challenges. No biometric data, private key
+ * or raw assertion is ever stored or audited. Biometrics are for signing in only:
+ * attendance never asks for them.
  */
 @Injectable()
 export class BiometricsService {
@@ -107,7 +122,9 @@ export class BiometricsService {
       userDisplayName: principal.displayName,
       attestationType: 'none',
       timeout: 120_000,
-      excludeCredentials: active.map((c) => ({ id: c.credentialId, transports: c.transports })),
+      excludeCredentials: active
+        .filter((c) => c.kind === 'PASSKEY')
+        .map((c) => ({ id: c.credentialId, transports: c.transports })),
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         residentKey: 'required',
@@ -306,7 +323,9 @@ export class BiometricsService {
     const credential = await this.prisma.webAuthnCredential.findUnique({
       where: { credentialId: input.response.id },
     });
-    if (!credential || credential.revokedAt) return fail('credential_unknown_or_revoked');
+    if (!credential || credential.revokedAt || credential.kind !== 'PASSKEY') {
+      return fail('credential_unknown_or_revoked');
+    }
     const verified = await this.verify(credential, input.response, expected);
     if (!verified) return fail('assertion_invalid', credential.userId);
 
@@ -323,24 +342,6 @@ export class BiometricsService {
       { credentialId: credential.id },
       { webauthnCredentialId: credential.id },
     );
-  }
-
-  /**
-   * Verifies a fresh assertion from one of the account's active credentials
-   * against a challenge already consumed by the caller; records its use.
-   * Returns the credential, or null when anything does not match.
-   */
-  async verifyForUser(
-    userId: string,
-    response: WebAuthnResponseJson,
-    expectedChallenge: string,
-    db: Prisma.TransactionClient | PrismaService = this.prisma,
-  ): Promise<WebAuthnCredential | null> {
-    const credential = await db.webAuthnCredential.findUnique({
-      where: { credentialId: response.id },
-    });
-    if (!credential || credential.userId !== userId || credential.revokedAt) return null;
-    return (await this.verify(credential, response, expectedChallenge, db)) ? credential : null;
   }
 
   private async verify(
@@ -379,5 +380,187 @@ export class BiometricsService {
     } catch {
       return false;
     }
+  }
+
+  /* ─────────────────────────── Android device keys (Phase 8) ─────────────────────────── */
+
+  /**
+   * Enabling biometric sign-in in the Android app, step 1: a challenge the new
+   * Keystore key must sign (proof of possession). Like passkeys, only after a
+   * password or email-code sign-in.
+   */
+  async deviceRegistrationOptions(principal: AuthPrincipal): Promise<DeviceKeyChallenge> {
+    if (principal.sessionMethod === 'BIOMETRIC') throw BiometricErrors.reauthRequired();
+    const active = await this.prisma.webAuthnCredential.count({
+      where: { userId: principal.userId, revokedAt: null },
+    });
+    if (active >= MAX_CREDENTIALS) throw BiometricErrors.tooMany();
+    const challenge = randomBytes(32).toString('base64url');
+    const challengeId = await this.challenges.create('DEVICE_REGISTRATION', challenge, {
+      userId: principal.userId,
+    });
+    return { challengeId, challenge };
+  }
+
+  /** Step 2: the device's public key and its signature over the challenge. */
+  async registerDevice(
+    principal: AuthPrincipal,
+    input: RegisterDeviceKeyRequest,
+    context: RequestContext,
+  ): Promise<BiometricCredential> {
+    if (principal.sessionMethod === 'BIOMETRIC') throw BiometricErrors.reauthRequired();
+    const expected = await this.challenges.consume(input.challengeId, 'DEVICE_REGISTRATION', {
+      userId: principal.userId,
+    });
+    if (!expected) throw BiometricErrors.failed();
+    const key = deviceKey(Buffer.from(input.publicKey, 'base64'));
+    const message = deviceKeyMessage('register', input.challengeId, expected);
+    if (!key || !signedBy(key, message, input.signature)) throw BiometricErrors.failed();
+
+    const credential = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.webAuthnCredential.create({
+        data: {
+          userId: principal.userId,
+          kind: 'ANDROID_KEY',
+          credentialId: randomBytes(24).toString('base64url'),
+          publicKey: key.export({ format: 'der', type: 'spki' }),
+          signCount: 0n,
+          transports: [],
+          multiDevice: false,
+          backedUp: false,
+          aaguid: null,
+          name: input.name,
+          createdAt: this.clock.now(),
+        },
+      });
+      await this.audit.record(
+        {
+          actor: actorOf(principal),
+          action: 'auth.biometric_enabled',
+          resourceType: 'webauthn_credential',
+          resourceId: created.id,
+          outcome: 'SUCCESS',
+          after: { name: created.name, kind: created.kind },
+          context,
+        },
+        tx,
+      );
+      await this.notifications.notify(tx, [principal.userId], {
+        type: 'security.biometric_enabled',
+        data: { deviceName: created.name },
+        link: '/profile',
+        dedupeKey: `security.biometric_enabled:${created.id}`,
+      });
+      return created;
+    });
+    this.securityEmail(principal.email, true, credential.name);
+    return toCredential(credential);
+  }
+
+  /**
+   * Signing in with a device key, step 1: a challenge bound to the credential the
+   * device names. The answer is the same whether or not that credential exists.
+   */
+  async deviceLoginOptions(
+    input: DeviceKeyLoginOptionsRequest,
+    context: RequestContext,
+  ): Promise<DeviceKeyChallenge> {
+    const key = rateLimitKey('biometric-options-ip', context.ip ?? 'unknown');
+    const state = await this.limiter.hit(key, LIMITS.biometricOptionsPerIp.windowSeconds);
+    if (state.count > LIMITS.biometricOptionsPerIp.limit) {
+      throw Errors.rateLimited(state.resetInSeconds || LIMITS.biometricOptionsPerIp.windowSeconds);
+    }
+    const challenge = randomBytes(32).toString('base64url');
+    const challengeId = await this.challenges.create('DEVICE_LOGIN', challenge, {
+      credentialId: input.credentialId,
+    });
+    return { challengeId, challenge };
+  }
+
+  /**
+   * Step 2: the signature the Keystore key produced after the device's biometric
+   * check. Fresh, single-use, bound to this credential, from an active key of an
+   * active account — otherwise one generic failure, counted per client IP.
+   */
+  async deviceLogin(input: DeviceKeyLoginRequest, context: RequestContext): Promise<AuthResponse> {
+    const ipKey = rateLimitKey('device-key-fail-ip', context.ip ?? 'unknown');
+    const state = await this.limiter.peek(ipKey);
+    if (state.count >= LIMITS.deviceKeyFailuresPerIp.limit) {
+      throw Errors.rateLimited(state.resetInSeconds || LIMITS.deviceKeyFailuresPerIp.windowSeconds);
+    }
+    const fail = async (reason: string, userId: string | null = null): Promise<never> => {
+      await this.limiter.hit(ipKey, LIMITS.deviceKeyFailuresPerIp.windowSeconds);
+      await this.audit.recordSafely({
+        actor: null,
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: userId,
+        outcome: 'FAILURE',
+        reason,
+        metadata: { method: 'BIOMETRIC', kind: 'ANDROID_KEY' },
+        context,
+      });
+      throw BiometricErrors.failed();
+    };
+
+    const expected = await this.challenges.consume(input.challengeId, 'DEVICE_LOGIN', {
+      credentialId: input.credentialId,
+      userId: null,
+    });
+    if (!expected) return fail('challenge_invalid');
+    const credential = await this.prisma.webAuthnCredential.findUnique({
+      where: { credentialId: input.credentialId },
+    });
+    if (!credential || credential.revokedAt || credential.kind !== 'ANDROID_KEY') {
+      return fail('credential_unknown_or_revoked');
+    }
+    const key = deviceKey(Buffer.from(credential.publicKey));
+    const message = deviceKeyMessage('login', input.challengeId, expected, input.credentialId);
+    if (!key || !signedBy(key, message, input.signature)) {
+      return fail('signature_invalid', credential.userId);
+    }
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: credential.userId },
+      include: USER_INCLUDE,
+    });
+    if (user.status === 'SUSPENDED') throw Errors.accountSuspended();
+    await this.prisma.webAuthnCredential.update({
+      where: { id: credential.id },
+      data: { lastUsedAt: this.clock.now() },
+    });
+    await this.limiter.reset(ipKey);
+    return this.auth.signIn(
+      user,
+      'BIOMETRIC',
+      context,
+      { credentialId: credential.id, kind: 'ANDROID_KEY' },
+      { webauthnCredentialId: credential.id },
+    );
+  }
+}
+
+/** An EC P-256 public key from DER SubjectPublicKeyInfo, or null for anything else. */
+function deviceKey(spki: Buffer): KeyObject | null {
+  try {
+    const key = createPublicKey({ key: spki, format: 'der', type: 'spki' });
+    return key.asymmetricKeyType === 'ec' && key.asymmetricKeyDetails?.namedCurve === 'prime256v1'
+      ? key
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A DER-encoded ECDSA-SHA256 signature (as Android's `SHA256withECDSA` produces) over the message. */
+function signedBy(key: KeyObject, message: string, signature: string): boolean {
+  try {
+    return verifySignature(
+      'sha256',
+      Buffer.from(message, 'utf8'),
+      { key, dsaEncoding: 'der' },
+      Buffer.from(signature, 'base64'),
+    );
+  } catch {
+    return false;
   }
 }

@@ -1,0 +1,35 @@
+[package]
+name = "ftms-mobile"
+version = "0.8.0"
+description = "FTMS Android app: a Tauri shell that opens the FTMS web app"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+# One lock file and target directory for the shell and its plugin.
+[workspace]
+members = ["../plugins/tauri-plugin-device-key"]
+
+[lib]
+# `staticlib`/`cdylib` for the Android build, `rlib` for tests.
+name = "ftms_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.2", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.3", features = [] }
+tauri-plugin-barcode-scanner = "=2.5.2"
+tauri-plugin-geolocation = "=2.4.2"
+tauri-plugin-device-key = { path = "../plugins/tauri-plugin-device-key" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

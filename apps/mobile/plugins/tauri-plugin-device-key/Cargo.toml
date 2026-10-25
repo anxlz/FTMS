@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-device-key"
+version = "0.8.0"
+description = "FTMS: optional biometric login with a key in the Android Keystore (signs server challenges after a strong biometric check)."
+edition = "2021"
+rust-version = "1.90"
+publish = false
+workspace = "../../src-tauri"
+links = "tauri-plugin-device-key"
+exclude = ["/android/build", "/android/.gradle"]
+
+[dependencies]
+tauri = { version = "=2.12.3", default-features = false }
+
+[build-dependencies]
+tauri-plugin = { version = "=2.7.1", features = ["build"] }

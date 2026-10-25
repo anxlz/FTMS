@@ -46,6 +46,15 @@
       "outputs": [],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/assets/branding/**"]
     },
+    "@ftms/mobile#test": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/web/lib/native.ts",
+        "$TURBO_ROOT$/apps/web/messages/**",
+        "$TURBO_ROOT$/assets/branding/generated/android/**"
+      ]
+    },
     "test:e2e": {
       "dependsOn": ["^build", "prisma:generate"],
       "cache": false,

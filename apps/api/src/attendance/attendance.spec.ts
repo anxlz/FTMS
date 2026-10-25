@@ -89,7 +89,13 @@ describe('export safety (§19)', () => {
   it('has a label for every status and source in both languages', () => {
     for (const labels of Object.values(EXPORT_LABELS)) {
       expect(Object.keys(labels.status).sort()).toEqual(['ABSENT', 'LATE', 'PRESENT']);
-      expect(Object.keys(labels.source).sort()).toEqual(['AUTOMATIC', 'MANUAL', 'QR']);
+      expect(Object.keys(labels.source).sort()).toEqual([
+        'AUTOMATIC',
+        'GUEST',
+        'GUEST_UNMATCHED',
+        'MANUAL',
+        'QR',
+      ]);
     }
   });
 });

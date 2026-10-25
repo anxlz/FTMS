@@ -220,8 +220,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
   /** The rows every format must contain, in the reader's language. */
   function expectedRows(locale: 'ar' | 'en'): string[][] {
     const L = EXPORT_LABELS[locale];
-    const yes = L.yes;
-    const no = L.no;
     const v1Row = (group: string, name: string, seat: string, rest: string[]) => [
       '2026-12-01',
       '10:00–12:00',
@@ -246,7 +244,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         '2026-12-01 09:58',
         '0',
         L.source.QR,
-        yes,
         '',
       ]),
       v1Row('المجموعة أ', `'=HYPERLINK("http://evil.example")`, '2026-104', [
@@ -254,7 +251,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         '',
         '0',
         L.source.MANUAL,
-        no,
         'Arrived with the supervisor, "confirmed"',
       ]),
       v1Row('المجموعة أ', 'سارة إبراهيم', '2026-105', [
@@ -262,7 +258,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         '',
         '0',
         L.source.AUTOMATIC,
-        no,
         '',
       ]),
       v1Row('المجموعة ب', 'فاطمة محمود السيد', '2026-102', [
@@ -270,7 +265,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         '2026-12-01 10:22',
         '7',
         L.source.QR,
-        no,
         '',
       ]),
       v1Row('المجموعة ب', 'Omar Khaled', '2026-103', [
@@ -278,7 +272,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         '',
         '0',
         L.source.AUTOMATIC,
-        no,
         '',
       ]),
       v2Row('فاطمة محمود السيد', '2026-102', [
@@ -286,17 +279,9 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         '2026-12-03 08:50',
         '0',
         L.source.QR,
-        no,
         '',
       ]),
-      v2Row('Omar Khaled', '2026-103', [
-        L.status.LATE,
-        '2026-12-03 09:18',
-        '3',
-        L.source.QR,
-        no,
-        '',
-      ]),
+      v2Row('Omar Khaled', '2026-103', [L.status.LATE, '2026-12-03 09:18', '3', L.source.QR, '']),
     ];
   }
 
@@ -313,7 +298,6 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
       c.checkIn,
       c.minutesLate,
       c.source,
-      c.biometric,
       c.note,
     ];
   };
@@ -372,7 +356,7 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
       const sheet = workbook.worksheets[0]!;
       const rows: CellValue[][] = [];
       sheet.eachRow((row) => {
-        rows.push(Array.from({ length: 12 }, (_, i) => row.getCell(i + 1).value ?? ''));
+        rows.push(Array.from({ length: 11 }, (_, i) => row.getCell(i + 1).value ?? ''));
       });
       return { sheet, rows };
     };
@@ -428,7 +412,7 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
         return {
           key: [r[0], r[1], r[5], checkIn, late],
           letters: letters(
-            [r[0], r[1], r[2], r[3], name, r[5], r[6], checkIn, late, r[9], r[11]].join(''),
+            [r[0], r[1], r[2], r[3], name, r[5], r[6], checkIn, late, r[9], r[10]].join(''),
           ),
           group: `${r[0]}|${r[3]}`,
         };
@@ -485,6 +469,108 @@ describe('Attendance exports: PDF, XLSX and CSV match the records (§10.4, §19,
       details: { to: ['END_BEFORE_START'] },
     });
     await download('format=docx').expect(400);
+  });
+
+  it('lists guest records and guest submissions that matched nobody, marked as not verified (Phase 8)', async () => {
+    // A guest submission whose seat number matched s5 created s5's record (unverified)…
+    const s5Record = await prisma.attendanceRecord.findFirst({
+      where: { visitId: v1, studentId: ids.s5 },
+    });
+    expect(s5Record).toBeNull();
+    clock.set(at('2026-12-01', '10:30'));
+    const guestRecord = await prisma.attendanceRecord.create({
+      data: {
+        visitId: v1,
+        studentId: ids.s5,
+        groupId: groupA.id,
+        status: 'LATE',
+        minutesLate: 4,
+        checkedInAt: at('2026-12-01', '10:19'),
+        source: 'GUEST',
+        latitude: 30.1,
+        longitude: 31.2,
+      },
+    });
+    await prisma.guestCheckIn.createMany({
+      data: [
+        {
+          visitId: v1,
+          submissionKey: '01900000-0000-7000-8000-0000000000a1',
+          fullName: 'سارة إبراهيم',
+          seatNumber: '2026-105',
+          status: 'LATE',
+          minutesLate: 4,
+          submittedAt: at('2026-12-01', '10:19'),
+          latitude: 30.1,
+          longitude: 31.2,
+          outcome: 'RECORDED',
+          studentId: ids.s5,
+          attendanceRecordId: guestRecord.id,
+          nameMatches: true,
+        },
+        // …and one typed a seat number nobody in the visit's group has.
+        {
+          visitId: v2,
+          submissionKey: '01900000-0000-7000-8000-0000000000a2',
+          fullName: 'زائر غير معروف',
+          seatNumber: '2026-999',
+          status: 'PRESENT',
+          minutesLate: 0,
+          submittedAt: at('2026-12-03', '08:55'),
+          latitude: 30.1,
+          longitude: 31.2,
+          outcome: 'UNMATCHED',
+        },
+      ],
+    });
+    clock.set(at('2026-12-10', '12:00'));
+    const L = EXPORT_LABELS.en;
+    const csv = async (query = '') =>
+      parseCsv(
+        ((await download(`format=csv&locale=en${query}`).expect(200)).body as Buffer)
+          .subarray(3)
+          .toString('utf8'),
+      ).slice(1);
+    const rows = await csv();
+    expect(rows).toHaveLength(8);
+    expect(rows.find((r) => r[5] === '2026-105')).toEqual([
+      '2026-12-01',
+      '10:00–12:00',
+      'زيارة مزرعة الخضر',
+      'المجموعة أ',
+      'سارة إبراهيم',
+      '2026-105',
+      L.status.LATE,
+      '2026-12-01 10:19',
+      '4',
+      L.source.GUEST,
+      '',
+    ]);
+    // The unmatched submission comes after the visit's groups, with no group.
+    expect(rows.at(-1)).toEqual([
+      '2026-12-03',
+      '09:00',
+      'Dairy farm, unit 2',
+      '',
+      'زائر غير معروف',
+      '2026-999',
+      L.status.PRESENT,
+      '2026-12-03 08:55',
+      '0',
+      L.source.GUEST_UNMATCHED,
+      '',
+    ]);
+    // It belongs to no group or student, so those filters leave it out.
+    expect((await csv(`&group=${groupB.id}`)).map((r) => r[5])).not.toContain('2026-999');
+    expect((await csv('&status=PRESENT')).map((r) => r[5])).toContain('2026-999');
+    expect((await csv('&status=LATE')).map((r) => r[5])).not.toContain('2026-999');
+    // The PDF shows the same rows (the empty group as a dash).
+    const pdf = await download('format=pdf&locale=en').expect(200);
+    const text = pdfLines(pdf.body as Buffer, false)
+      .flat()
+      .map((l) => l.join(' '));
+    expect(text.some((l) => l.includes('2026-999') && l.includes('—'))).toBe(true);
+    expect(text.some((l) => l.includes('Records: 8'))).toBe(true);
   });
 
   it('is audited without personal data', async () => {

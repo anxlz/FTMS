@@ -90,12 +90,22 @@ export default async function SettingsPage() {
                 <dd>{program.allowedAbsences}</dd>
               </div>
               <div>
-                <dt>{t('schedule.policy.biometricFallback')}</dt>
-                <dd>{t(`schedule.policy.fallback.${program.checkInPolicy.biometricFallback}`)}</dd>
+                <dt>{t('schedule.policy.radius')}</dt>
+                <dd>
+                  {program.checkInPolicy.radiusMeters === null
+                    ? t('schedule.policy.noLimit')
+                    : t('schedule.policy.meters', { meters: program.checkInPolicy.radiusMeters })}
+                </dd>
               </div>
               <div>
-                <dt>{t('schedule.policy.geolocation')}</dt>
-                <dd>{t(`schedule.policy.location.${program.checkInPolicy.geolocation}`)}</dd>
+                <dt>{t('schedule.policy.accuracy')}</dt>
+                <dd>
+                  {program.checkInPolicy.maxAccuracyMeters === null
+                    ? t('schedule.policy.noLimit')
+                    : t('schedule.policy.meters', {
+                        meters: program.checkInPolicy.maxAccuracyMeters,
+                      })}
+                </dd>
               </div>
             </dl>
             <p className="muted small">{t('settings.rules')}</p>

@@ -63,6 +63,17 @@ a browser (checked after every build by `pnpm scan:bundle`).
 | `BFF_SHARED_SECRET`   | Production | yes    | The same value as the API's. Server-only.                                                                                |
 | `NODE_ENV`            | —          | no     | Set by Next.js (`production` for `next build`/`next start`). In production cookies are `Secure` and HSTS is sent.        |
 
+## Android app (`apps/mobile`, build time)
+
+The app holds no secret: it only needs the address of the deployed web app. It is read by
+`pnpm --filter @ftms/mobile configure` (run by `android:dev` and `android:build`), which
+writes the git-ignored `src/config.json` and `src-tauri/capabilities/remote.json`
+([mobile.md](mobile.md)).
+
+| Variable       | Required         | Secret | Purpose and format                                                                                                                                                                                                                                                                                                   |
+| -------------- | ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FTMS_WEB_URL` | For an app build | no     | Origin of the deployed **web app** (not the API), e.g. `https://ftms.example.edu`: the only site the app opens and the only one allowed to use its native features. `https://` only; `http://` is accepted for `localhost`, `127.0.0.1` and the emulator's `10.0.2.2` in development. No path, query or credentials. |
+
 ## Scripts and tests only
 
 | Variable                              | Used by           | Purpose                                                                                                              |

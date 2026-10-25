@@ -83,7 +83,7 @@ export async function renderAttendancePdf(params: {
       case 'visit':
         return row.visitTitle;
       case 'group':
-        return row.group;
+        return row.group || '—';
       case 'student':
         return row.studentName;
       case 'seat':
@@ -98,8 +98,6 @@ export async function renderAttendancePdf(params: {
         return labels.source[row.source];
       case 'note':
         return row.note || '';
-      case 'biometric':
-        return row.biometricVerified ? labels.yes : labels.no;
     }
   };
   const cells = (texts: string[], header = false) =>

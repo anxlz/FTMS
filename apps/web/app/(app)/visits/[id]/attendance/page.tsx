@@ -24,7 +24,9 @@ const isolate = (text: string) =>
 /**
  * One visit's attendance (§10.3): every expected student with status, check-in
  * time, lateness, how it was recorded, the captured location and any
- * correction — with filters, corrections (§8.4) and the report download.
+ * correction — with filters, corrections (§8.4) and the report download. Below
+ * it, every guest submission (Phase 8) as typed, unverified, with what it
+ * matched, so staff can review and correct.
  */
 export default async function VisitAttendancePage({
   params,
@@ -187,17 +189,7 @@ export default async function VisitAttendancePage({
                         )}
                       </td>
                       <td>{r?.checkedInAt ? clock(r.checkedInAt) : '—'}</td>
-                      <td>
-                        {r ? t(`source.${r.source}`) : '—'}
-                        {r?.checkedInAt && (
-                          <>
-                            <br />
-                            <span className="muted small">
-                              {r.biometricVerified ? t('biometricYes') : t('biometricNo')}
-                            </span>
-                          </>
-                        )}
-                      </td>
+                      <td>{r ? t(`source.${r.source}`) : '—'}</td>
                       <td>
                         {loc ? (
                           <>
@@ -261,6 +253,73 @@ export default async function VisitAttendancePage({
         <p className="muted small">{t('locationNote')}</p>
         {!canCorrect && v.status === 'SCHEDULED' && data.window.state === 'NOT_OPEN' && (
           <p className="muted small">{t('correctionLater')}</p>
+        )}
+      </section>
+
+      <section className="card stack" aria-labelledby="guest-title">
+        <h2 id="guest-title">{t('guest.title')}</h2>
+        <p className="muted small">{t('guest.intro')}</p>
+        {data.guestSubmissions.length === 0 ? (
+          <p className="empty">{t('guest.none')}</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">{t('guest.typedName')}</th>
+                  <th scope="col">{t('guest.typedSeat')}</th>
+                  <th scope="col">{t('columns.status')}</th>
+                  <th scope="col">{t('columns.checkIn')}</th>
+                  <th scope="col">{t('columns.location')}</th>
+                  <th scope="col">{t('guest.outcome')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.guestSubmissions.map((g) => (
+                  <tr key={g.id}>
+                    <th scope="row">{g.fullName}</th>
+                    <td dir="ltr">{g.seatNumber}</td>
+                    <td>
+                      <AttendanceBadge status={g.status} minutesLate={g.minutesLate} />
+                    </td>
+                    <td>{clock(g.submittedAt)}</td>
+                    <td>
+                      <a
+                        href={`https://www.google.com/maps?q=${g.location.latitude},${g.location.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        dir="ltr"
+                      >
+                        {g.location.latitude.toFixed(5)}, {g.location.longitude.toFixed(5)}
+                      </a>
+                      <br />
+                      <span className="muted small">
+                        {g.location.accuracyMeters !== null &&
+                          t('accuracy', { meters: Math.round(g.location.accuracyMeters) })}
+                        {g.location.accuracyMeters !== null &&
+                          g.location.distanceMeters !== null &&
+                          ' · '}
+                        {g.location.distanceMeters !== null &&
+                          t('distance', { meters: Math.round(g.location.distanceMeters) })}
+                      </span>
+                    </td>
+                    <td>
+                      {t(`guest.outcomes.${g.outcome}`)}
+                      {g.student && (
+                        <>
+                          <br />
+                          <Link href={`/students/${g.student.id}`}>{g.student.fullName}</Link>
+                          {g.nameMatches === false && (
+                            <span className="badge badge-warn">{t('guest.nameDiffers')}</span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

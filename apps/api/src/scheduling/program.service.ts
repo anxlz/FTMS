@@ -32,7 +32,10 @@ export const toProgram = (p: TrainingProgram): Program => {
     timeZone: p.timeZone,
     timing: timingOf(p),
     allowedAbsences: p.allowedAbsences,
-    checkInPolicy: { biometricFallback: p.biometricFallback, geolocation: p.geolocationPolicy },
+    checkInPolicy: {
+      radiusMeters: p.locationRadiusMeters,
+      maxAccuracyMeters: p.locationMaxAccuracyMeters,
+    },
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
@@ -105,8 +108,8 @@ export class ProgramService {
             ...input.timing,
             ...(input.checkInPolicy
               ? {
-                  biometricFallback: input.checkInPolicy.biometricFallback,
-                  geolocationPolicy: input.checkInPolicy.geolocation,
+                  locationRadiusMeters: input.checkInPolicy.radiusMeters,
+                  locationMaxAccuracyMeters: input.checkInPolicy.maxAccuracyMeters,
                 }
               : {}),
             createdById: principal.userId,
@@ -158,8 +161,12 @@ export class ProgramService {
         durationWeeks: input.durationWeeks,
         allowedAbsences: input.allowedAbsences,
         ...(input.timing ?? {}),
-        biometricFallback: input.checkInPolicy?.biometricFallback,
-        geolocationPolicy: input.checkInPolicy?.geolocation,
+        ...(input.checkInPolicy
+          ? {
+              locationRadiusMeters: input.checkInPolicy.radiusMeters,
+              locationMaxAccuracyMeters: input.checkInPolicy.maxAccuracyMeters,
+            }
+          : {}),
       };
       const updated = await tx.trainingProgram.update({ where: { id: current.id }, data });
 

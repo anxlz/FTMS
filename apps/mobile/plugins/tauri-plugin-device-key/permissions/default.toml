@@ -1,0 +1,15 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Optional biometric login for this app: read whether it is set up, create the
+Keystore key, sign a server challenge after the biometric prompt, remember the
+server's credential id, and remove the key.
+"""
+permissions = [
+  "allow-status",
+  "allow-create-key",
+  "allow-sign",
+  "allow-set-credential",
+  "allow-remove",
+]
