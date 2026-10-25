@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type AuditAction,
   type AuthResponse,
   type ChangePasswordRequest,
   checkPasswordPolicy,
@@ -319,7 +320,7 @@ export class AuthService {
     email: string,
     code: string,
     purpose: ChallengePurpose,
-    auditAction: string,
+    auditAction: AuditAction,
     context: RequestContext,
   ): Promise<UserWithRelations | null> {
     const emailKey = rateLimitKey('code-fail-email', email);

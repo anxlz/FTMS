@@ -4,8 +4,10 @@ import {
   addDays,
   type AttendanceOverview,
   type CalendarResponse,
+  type FacultyActivityResponse,
   type Group,
   type GroupSwapView,
+  type ListAuditLogsResponse,
   type ListGroupSwapsResponse,
   type ListProfileChangesResponse,
   type ListStudentsResponse,
@@ -15,6 +17,7 @@ import {
   type MeResponse,
   type OwnAttendanceResponse,
   type OwnStudentProfile,
+  type ProgramState,
   PROGRAM_TIME_ZONE,
   ROLES,
   todayIn,
@@ -27,6 +30,8 @@ import { accessToken, requireUser } from '@/lib/auth/session';
 import { dayValue } from '@/lib/calendar';
 
 const UPCOMING_DAYS = 14;
+/** The Training Director's activity card covers this many days up to today. */
+const ACTIVITY_DAYS = 7;
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('nav'))('dashboard') };
@@ -40,7 +45,20 @@ export default async function DashboardPage() {
   const format = await getFormatter();
   const today = todayIn(PROGRAM_TIME_ZONE);
   // Real data only: every figure comes from the API.
-  const [counts, records, own, upcoming, attendance, overview, requests] = await Promise.all([
+  const canAudit = has('audit.read');
+  const canSettings = has('schedule.manage') || has('attendance.settings.defaults');
+  const [
+    counts,
+    records,
+    own,
+    upcoming,
+    attendance,
+    overview,
+    requests,
+    activity,
+    recent,
+    program,
+  ] = await Promise.all([
     has('users.read') ? accountCounts(token) : null,
     has('students.read')
       ? studentCounts(token, has('profile_changes.decide'), has('students.manage'))
@@ -63,8 +81,31 @@ export default async function DashboardPage() {
       tickets: has('tickets.process'),
       swaps: has('group_swaps.decide'),
     }),
+    canAudit
+      ? apiFetch<FacultyActivityResponse>(
+          `/audit-logs/activity?from=${addDays(today, -(ACTIVITY_DAYS - 1))}&to=${today}`,
+          { accessToken: token },
+        )
+      : null,
+    canAudit
+      ? apiFetch<ListAuditLogsResponse>('/audit-logs?scope=staff&pageSize=6', {
+          accessToken: token,
+        })
+      : null,
+    canSettings ? apiFetch<ProgramState>('/program', { accessToken: token }) : null,
   ]);
   const summary = attendance?.ok ? attendance.data.summary : null;
+  const staffActivity = activity?.ok ? activity.data : null;
+  const settings = program?.ok ? program.data.program : null;
+  const programWeek = settings
+    ? Math.min(
+        settings.durationWeeks,
+        Math.max(
+          0,
+          Math.floor((Date.parse(today) - Date.parse(settings.startDate)) / 604_800_000) + 1,
+        ),
+      )
+    : null;
   const totals = overview?.ok ? overview.data : null;
   const nextVisits = upcoming.ok
     ? upcoming.data.visits.filter((v) => v.phase !== 'FINISHED').slice(0, 5)
@@ -214,6 +255,105 @@ export default async function DashboardPage() {
           </li>
         </ul>
       </section>
+
+      {staffActivity && (
+        <section className="card stack" aria-labelledby="staff-activity-title">
+          <div className="row-between">
+            <h2 id="staff-activity-title">
+              {t('dashboard.staffActivityTitle', { days: ACTIVITY_DAYS })}
+            </h2>
+            <Link href="/audit/activity">{t('dashboard.openActivity')}</Link>
+          </div>
+          <ul className="stat-grid">
+            <li className="stat">
+              <span className="stat-value">{staffActivity.totals.actions}</span>
+              <span className="stat-label">{t('audit.actionsCount')}</span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{staffActivity.totals.decisions}</span>
+              <span className="stat-label">
+                <Link href="/audit?decisions=true&scope=all">{t('audit.decisionsCount')}</Link>
+              </span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">{staffActivity.totals.failures}</span>
+              <span className="stat-label">
+                <Link href="/audit?outcome=FAILURE&scope=staff">{t('audit.failuresCount')}</Link>
+              </span>
+            </li>
+            <li className="stat">
+              <span className="stat-value">
+                {staffActivity.totals.activeStaff}
+                <span className="stat-of"> / {staffActivity.rows.length}</span>
+              </span>
+              <span className="stat-label">{t('audit.activeStaff')}</span>
+            </li>
+          </ul>
+          {recent?.ok && recent.data.items.length > 0 && (
+            <>
+              <h3 className="h3">{t('dashboard.recentStaffActions')}</h3>
+              <ul className="agenda">
+                {recent.data.items.map((e) => (
+                  <li key={e.id}>
+                    <Link href={`/audit/${e.id}`}>
+                      <strong>{t(`audit.actions.${e.action}`)}</strong>
+                    </Link>
+                    <p className="muted small">
+                      {e.actor?.name ?? t('audit.system')} ·{' '}
+                      {format.dateTime(new Date(e.at), { dateStyle: 'medium', timeStyle: 'short' })}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="small">
+            <Link href="/audit">{t('dashboard.openAudit')}</Link>
+          </p>
+        </section>
+      )}
+
+      {settings && (
+        <section className="card stack" aria-labelledby="program-title">
+          <div className="row-between">
+            <h2 id="program-title">{t('dashboard.programTitle')}</h2>
+            <Link href="/settings">{t('dashboard.openSettings')}</Link>
+          </div>
+          <dl className="details">
+            <div>
+              <dt>{t('dashboard.programName')}</dt>
+              <dd>{settings.name}</dd>
+            </div>
+            <div>
+              <dt>{t('dashboard.programPeriod')}</dt>
+              <dd>
+                {format.dateTime(dayValue(settings.startDate), { dateStyle: 'medium' })} –{' '}
+                {format.dateTime(dayValue(settings.endDate), { dateStyle: 'medium' })}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('dashboard.programWeek')}</dt>
+              <dd>
+                {t('dashboard.weekOf', { week: programWeek ?? 0, weeks: settings.durationWeeks })}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('schedule.program.timing')}</dt>
+              <dd>
+                {t('visits.fields.timingFixed', {
+                  opens: settings.timing.checkInOpensMinutes,
+                  grace: settings.timing.graceMinutes,
+                  closes: settings.timing.checkInClosesMinutes,
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('schedule.fields.allowedAbsences')}</dt>
+              <dd>{settings.allowedAbsences}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
 
       {upcoming.ok && (
         <section className="card stack" aria-labelledby="upcoming-title">

@@ -39,11 +39,12 @@ export default defineConfig({
       : {}),
   },
   // The attendance spec builds on the program the scheduling spec configures;
-  // the requests spec runs after the core specs so its groups do not appear in theirs.
+  // the requests and audit specs run after the core specs so their data does not appear in theirs.
   projects: [
-    { name: 'core', testIgnore: /(attendance|requests)\.spec\.ts$/ },
+    { name: 'core', testIgnore: /(attendance|requests|audit)\.spec\.ts$/ },
     { name: 'attendance', testMatch: /attendance\.spec\.ts$/, dependencies: ['core'] },
     { name: 'requests', testMatch: /requests\.spec\.ts$/, dependencies: ['core'] },
+    { name: 'audit', testMatch: /audit\.spec\.ts$/, dependencies: ['core'] },
   ],
   webServer: [
     {

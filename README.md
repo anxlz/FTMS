@@ -3,18 +3,20 @@
 **نظام إدارة التدريب الميداني — كلية الزراعة، جامعة عين شمس**
 Field training management for the Faculty of Agriculture, Ain Shams University, Egypt.
 
-> **Status: Phase 5 — support tickets (complaints, suggestions, conversation, status
-> history) and mutual group swaps with the other student's consent, faculty approval, an
-> atomic exchange and a Training Director audit history** (on top of Phase 4: QR check-in
-> with biometrics and location, lateness, absences, corrections, attendance dashboards and
-> exports; Phase 3: program settings, schedules, visits, calendars, notifications; Phase 2:
-> student records, import, account linking, groups; Phase 1: identity, authentication,
-> roles and permissions, i18n). The master prompt (`docs/master-prompt.md`) is the source
-> of truth; each phase is implemented separately. Checkpoints:
-> [`phase-0`](docs/checkpoints/phase-0.md), [`phase-1`](docs/checkpoints/phase-1.md),
-> [`phase-2`](docs/checkpoints/phase-2.md), [`phase-3`](docs/checkpoints/phase-3.md),
-> [`phase-4`](docs/checkpoints/phase-4.md), [`phase-5`](docs/checkpoints/phase-5.md) —
-> what each delivered, what was verified, and what is still open.
+> **Status: Phase 6 — the Training Director's activity log (search, filters, per-event
+> before/after comparison, the affected record, decision history), faculty activity
+> history, training-wide settings with their configuration history, and
+> permission-restricted reports** (on top of Phase 5: support tickets and mutual group
+> swaps; Phase 4: QR check-in with biometrics and location, lateness, absences,
+> corrections, attendance dashboards and exports; Phase 3: program settings, schedules,
+> visits, calendars, notifications; Phase 2: student records, import, account linking,
+> groups; Phase 1: identity, authentication, roles and permissions, i18n). The master
+> prompt (`docs/master-prompt.md`) is the source of truth; each phase is implemented
+> separately. Checkpoints: [`phase-0`](docs/checkpoints/phase-0.md),
+> [`phase-1`](docs/checkpoints/phase-1.md), [`phase-2`](docs/checkpoints/phase-2.md),
+> [`phase-3`](docs/checkpoints/phase-3.md), [`phase-4`](docs/checkpoints/phase-4.md),
+> [`phase-5`](docs/checkpoints/phase-5.md), [`phase-6`](docs/checkpoints/phase-6.md) — what
+> each delivered, what was verified, and what is still open.
 
 ## Stack
 
@@ -234,7 +236,10 @@ a fixed geolocation — biometric enrollment and sign-in, a scanned check-in lin
 through sign-in, a confirmed check-in, faculty corrections and a report download, then a
 complaint with an attachment answered and resolved by staff (with an internal note the
 student never sees) and a group swap accepted by the other student and approved by the
-faculty, checked from both students' side and in the audit history; it reads
+faculty, checked from both students' side and in the audit history, and finally a
+faculty member's operations found in the activity log, opened with their before/after
+comparison, summarized per staff member and exported — while that faculty member is
+refused the log; it reads
 emailed codes from the API's log (no SMTP in tests). The two suites run one after the
 other because they share the database.
 
@@ -419,6 +424,46 @@ email-code sign-in always remain. The relying party is the web app's host
   decision with who made it (name and role), reasons, timestamps and the final status.
 - **Limits.** 10 new tickets and 10 swap requests per student per hour; 60 messages per
   hour.
+
+## Activity log and reports (Phase 6)
+
+- **One audit writer (§15.4).** Every module records through `AuditService`; its `action`
+  and `resourceType` are typed against the shared catalogue in
+  `packages/core/src/audit/catalogue.ts` (`AUDIT_ACTIONS`, 71 actions in 13 categories), so
+  an unlisted action does not compile and every action has a label in both languages.
+  Each event keeps the actor's id, name and role at the time, the action, the record type
+  and id, previous and new values, the reason, the outcome, the IP address and browser.
+  Values whose names look secret (passwords, codes, tokens, hashes, credentials) are
+  redacted before writing, and the flows that handle secrets record only facts.
+- **Append-only.** `audit_logs` refuses `UPDATE`, `DELETE` and `TRUNCATE` by trigger (since
+  Phase 1); the API has read routes only. Deleting a record leaves its events, including
+  a snapshot of what was deleted and by whom.
+- **The log (§15.3).** `/audit` (permission `audit.read`: the Training Director and Super
+  Admin by default, or an account the Super Admin explicitly authorizes — that grant is
+  itself recorded) searches by name, action, record id or reason and filters by staff
+  member, whose actions (staff, students, system, everyone), category, action, record
+  type, outcome and period (Africa/Cairo days). Each event (`/audit/<id>`) shows the
+  before/after comparison field by field, the context, the record as it is now with a
+  link when it still exists, and the other events about the same record. The
+  **Decisions** view lists administrative decisions only: account verifications, profile
+  corrections, both students' and the faculty's group-swap decisions, attendance
+  corrections, ticket outcomes and changes to accounts' status, role and permissions.
+- **Faculty activity (§15.1).** `/audit/activity`: for a period (last 30 days by
+  default), every staff account — including those with no activity — with its actions,
+  decisions, failed attempts, actions per category and last action, each linking into the
+  filtered log. The Training Director's dashboard shows the last 7 days and the latest
+  staff actions.
+- **Training-wide settings (§11.3).** `/settings` shows the program (name, period,
+  duration, time zone), the attendance defaults and check-in policy, and the
+  configuration history with previous and new values.
+- **Reports.** `/reports` (permission `reports.export`) shows each report only to holders
+  of its permissions, and the API enforces the same rules: the student attendance
+  standing (every student's recorded visits, present, late, absent, minutes late,
+  remaining absences and standing against the allowance — the same rules as the
+  dashboards; `attendance.read`) as XLSX, CSV or PDF; the faculty activity report
+  (`audit.read`) as XLSX, CSV or PDF; and the filtered activity log (`audit.read`) as XLSX
+  or CSV (at most 10,000 events). Every download is recorded (`report.exported`,
+  `audit.exported`, `attendance.exported`).
 
 ## Languages
 

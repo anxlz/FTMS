@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type Role } from '@ftms/core';
+import { type AuditAction, type AuditResourceType, type Role } from '@ftms/core';
 import { type RequestContext } from '../common/request-context';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,9 +13,9 @@ export interface AuditActor {
 export interface AuditEvent {
   /** Who acted. `null` for unauthenticated attempts and system jobs. */
   actor: AuditActor | null;
-  /** Dotted verb, e.g. `auth.login`, `user.status_changed`. */
-  action: string;
-  resourceType: string;
+  /** From the shared catalogue (`AUDIT_ACTIONS`), e.g. `auth.login`, `user.status_changed`. */
+  action: AuditAction;
+  resourceType: AuditResourceType;
   resourceId?: string | null;
   outcome: 'SUCCESS' | 'FAILURE';
   reason?: string | null;

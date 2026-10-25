@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AttendanceModule } from './attendance/attendance.module';
+import { AuditLogModule } from './audit/audit-log.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
@@ -10,6 +11,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RedisModule } from './redis/redis.module';
+import { ReportsModule } from './reports/reports.module';
 import { RequestsModule } from './requests/requests.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { StorageModule } from './storage/storage.module';
@@ -33,6 +35,8 @@ import { UsersModule } from './users/users.module';
     SchedulingModule,
     AttendanceModule,
     RequestsModule,
+    AuditLogModule,
+    ReportsModule,
     HealthModule,
   ],
 })

@@ -8,8 +8,8 @@ import {
   type SettingsChange,
 } from '@ftms/core';
 import { getFormatter, getTranslations } from 'next-intl/server';
+import { SettingsHistory } from '@/components/settings-history';
 import { apiFetch } from '@/lib/api';
-import { showValue } from '@/lib/display';
 import { accessToken, requirePermission } from '@/lib/auth/session';
 import { dateOfWeekday, dayValue, WEEK_ORDER } from '@/lib/calendar';
 import {
@@ -256,36 +256,7 @@ export default async function SchedulePage({
       {historyRes.ok && historyRes.data.length > 0 && (
         <section className="card stack" aria-labelledby="settings-history-title">
           <h2 id="settings-history-title">{t('schedule.history')}</h2>
-          <ol className="history">
-            {historyRes.data.map((h, i) => (
-              <li key={`${h.at}-${i}`}>
-                <p>
-                  <strong>
-                    {t.has(`schedule.actions.${h.action}`)
-                      ? t(`schedule.actions.${h.action}`)
-                      : h.action}
-                  </strong>{' '}
-                  <span className="muted small">
-                    {format.dateTime(new Date(h.at), { dateStyle: 'medium', timeStyle: 'short' })} ·{' '}
-                    {h.actorName ?? '—'}
-                  </span>
-                </p>
-                {h.reason && (
-                  <p className="small">{t('visits.historyReason', { reason: h.reason })}</p>
-                )}
-                <ul className="changes">
-                  {Object.keys(h.after ?? {}).map((key) => (
-                    <li key={key}>
-                      {t.has(`schedule.fields.${key}`) ? t(`schedule.fields.${key}`) : key}:{' '}
-                      {h.before && <del>{showValue(h.before[key])}</del>}
-                      {h.before && ' → '}
-                      <ins>{showValue(h.after?.[key])}</ins>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ol>
+          <SettingsHistory entries={historyRes.data} />
         </section>
       )}
     </div>

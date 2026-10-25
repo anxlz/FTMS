@@ -11,7 +11,7 @@ import { type ExportLabels } from './export-labels';
  */
 const FONT_DIR = path.join(__dirname, '..', '..', 'assets', 'fonts');
 let registered = false;
-function registerFonts(): void {
+export function registerFonts(): void {
   if (registered) return;
   Font.register({
     family: 'Plex Arabic',

@@ -1154,3 +1154,48 @@ h3,
 .filter-date input {
   flex: 1 1 auto;
 }
+
+/* ── Phase 6: audit log and reports ────────────────────────────────────── */
+.mono {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+.changes-table th[scope='row'] {
+  font-weight: 600;
+  text-align: start;
+}
+.changes-table tr.changed {
+  background: var(--warn-bg);
+}
+.changes-table tr.unchanged {
+  color: var(--muted);
+}
+.changes-table del {
+  color: var(--error);
+}
+.changes-table ins {
+  color: var(--ok);
+  font-weight: 600;
+  text-decoration: none;
+}
+.status-standing-within {
+  color: var(--ok);
+}
+.status-standing-within::before {
+  content: '●';
+}
+.status-standing-atlimit {
+  color: var(--warn);
+}
+.status-standing-atlimit::before {
+  content: '◐';
+}
+.status-standing-over {
+  color: var(--error);
+}
+.status-standing-over::before {
+  content: '■';
+}
+.audit-table td {
+  vertical-align: top;
+}

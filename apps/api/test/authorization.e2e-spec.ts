@@ -89,6 +89,8 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
     swapForFaculty: string;
     otherGroup: string;
     otherStudentSeat: string;
+    /** Phase 6: an event in the audit log. */
+    auditEvent: string;
   }
 
   interface Case {
@@ -871,6 +873,58 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
           .send({ reason: 'Matrix rejection' }),
       expected: STAFF_ONLY(200),
     },
+    /* ── Phase 6: audit log and training-wide reports ── */
+    {
+      name: 'GET /audit-logs',
+      send: (c) => http().get('/audit-logs').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /audit-logs/facets',
+      send: (c) => http().get('/audit-logs/facets').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /audit-logs/activity',
+      send: (c) => http().get('/audit-logs/activity').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /audit-logs/:id',
+      send: (c, t) => http().get(`/audit-logs/${t.auditEvent}`).set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'GET /audit-logs/export',
+      send: (c) => http().get('/audit-logs/export?format=csv').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
+    {
+      name: 'DELETE /audit-logs/:id (no such route)',
+      send: (c, t) => http().delete(`/audit-logs/${t.auditEvent}`).set(as(c)),
+      expected: {
+        SUPER_ADMIN: 404,
+        TRAINING_DIRECTOR: 404,
+        FACULTY: 404,
+        STUDENT: 404,
+        ANONYMOUS: 404,
+      },
+    },
+    {
+      name: 'GET /reports/attendance-summary',
+      send: (c) => http().get('/reports/attendance-summary').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /reports/attendance-summary/export',
+      send: (c) => http().get('/reports/attendance-summary/export?format=csv').set(as(c)),
+      expected: STAFF_ONLY(200),
+    },
+    {
+      name: 'GET /reports/faculty-activity/export',
+      send: (c) => http().get('/reports/faculty-activity/export?format=csv').set(as(c)),
+      expected: DIRECTOR_ONLY(200),
+    },
     {
       name: 'GET /local-files/:token (public; forged token)',
       send: (c) => http().get('/local-files/e30.0000').set(as(c)),
@@ -1016,6 +1070,18 @@ describe('Authorization is enforced by the API, not the UI (§3, §20.7)', () =>
         swapForFaculty,
         otherGroup: otherGroup.id,
         otherStudentSeat: asker.seatNumber,
+        auditEvent: (
+          await prisma.auditLog.create({
+            data: {
+              action: 'visit.updated',
+              resourceType: 'visit',
+              resourceId: visit.id,
+              outcome: 'SUCCESS',
+              before: { title: 'Before' },
+              after: { title: 'After' },
+            },
+          })
+        ).id.toString(),
       };
       const res = await testCase.send(caller, target);
       expect({ status: res.status, code: res.body?.code }).toMatchObject({

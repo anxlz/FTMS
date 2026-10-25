@@ -43,8 +43,8 @@ const STAFF_NAV: StaffEntry[] = [
     anyOf: ['schedule.manage', 'schedule.group.manage', 'attendance.settings.defaults'],
   },
   { key: 'reviewQueues', href: '/reviews', anyOf: ['profile_changes.decide', 'students.manage'] },
-  { key: 'activityLogs', phase: 6, anyOf: ['audit.read'] },
-  { key: 'reports', phase: 6, anyOf: ['reports.export'] },
+  { key: 'activityLogs', href: '/audit', anyOf: ['audit.read'] },
+  { key: 'reports', href: '/reports', anyOf: ['reports.export'] },
   { key: 'users', href: '/admin/users', anyOf: ['users.read'] },
   {
     key: 'settings',

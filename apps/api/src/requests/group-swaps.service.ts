@@ -15,6 +15,7 @@ import {
   PROGRAM_TIME_ZONE,
   zonedToUtc,
   addDays,
+  type AuditAction,
 } from '@ftms/core';
 import { AuditService } from '../audit/audit.service';
 import { actorOf, type AuthPrincipal } from '../auth/principal';
@@ -435,7 +436,7 @@ export class GroupSwapsService {
     tx: Tx,
     principal: AuthPrincipal,
     r: SwapWithParties,
-    action: string,
+    action: AuditAction,
     after: string,
     context: RequestContext,
     reason: string | null = null,

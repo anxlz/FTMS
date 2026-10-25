@@ -16,5 +16,6 @@ import { ExportService } from './export.service';
   imports: [AuthModule],
   controllers: [CheckInController, AttendanceController, InternalAttendanceController],
   providers: [AbsencesService, AttendanceTokens, AttendanceService, CheckInService, ExportService],
+  exports: [AbsencesService],
 })
 export class AttendanceModule {}

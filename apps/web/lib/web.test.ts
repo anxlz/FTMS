@@ -1,8 +1,14 @@
 import {
+  ACCOUNT_STATUSES,
   API_ERROR_CODES,
   ATTENDANCE_FILTER_STATUSES,
   ATTENDANCE_SOURCES,
+  ATTENDANCE_STANDINGS,
   ATTENDANCE_STATUSES,
+  AUDIT_ACTIONS,
+  AUDIT_CATEGORIES,
+  AUDIT_RESOURCE_TYPES,
+  AUDIT_SCOPES,
   BIOMETRIC_FALLBACKS,
   CHECK_IN_STATES,
   GEOLOCATION_POLICIES,
@@ -37,6 +43,7 @@ import { needsRefresh, tokenExpiresAt } from './auth/tokens';
 import { lastDayOf, monthGrid, parseMonth, shiftMonth, WEEK_ORDER } from './calendar';
 import { ceremonyErrorCode } from './device';
 import { showValue } from './display';
+import { auditResourceHref } from './audit';
 import { navigationFor } from './navigation';
 import { permissionMessageKey } from './permission-label';
 import { safeNext } from './safe-next';
@@ -144,6 +151,33 @@ describe('message catalogs', () => {
         'MESSAGE_REQUIRED',
         'REASON_REQUIRED',
       ].map((c) => `errors.${c}`),
+    ];
+    for (const catalog of [ar, en] as Tree[]) {
+      for (const key of required)
+        expect([key, lookup(catalog, key)]).toEqual([key, expect.any(String)]);
+    }
+  });
+
+  it('translate every Phase 6 code: actions, categories, record types, scopes, standings', () => {
+    const required = [
+      ...AUDIT_ACTIONS.map((a) => `audit.actions.${a}`),
+      ...AUDIT_CATEGORIES.map((c) => `audit.categories.${c}`),
+      ...AUDIT_RESOURCE_TYPES.map((r) => `audit.resources.${r}`),
+      ...AUDIT_SCOPES.map((s) => `audit.scopes.${s}`),
+      ...(['SUCCESS', 'FAILURE'] as const).map((o) => `audit.outcomes.${o}`),
+      ...ATTENDANCE_STANDINGS.map((s) => `reports.standings.${s}`),
+      ...(['xlsx', 'csv', 'pdf'] as const).map((f) => `reports.download.formats.${f}`),
+      // Codes recorded in before/after values are shown in words.
+      ...[
+        ...ATTENDANCE_STATUSES,
+        ...ATTENDANCE_SOURCES,
+        ...ACCOUNT_STATUSES,
+        ...ROLES,
+        ...TICKET_STATUSES,
+        ...GROUP_SWAP_STATUSES,
+        ...REQUEST_STATUSES,
+        ...VISIT_STATUSES,
+      ].map((v) => `audit.values.${v}`),
     ];
     for (const catalog of [ar, en] as Tree[]) {
       for (const key of required)
@@ -276,9 +310,33 @@ describe('navigation per role (§18.2)', () => {
           '/settings',
           '/tickets',
           '/group-swaps',
+          '/audit',
+          '/reports',
         ]).toContain(item.href);
       } else expect(item.phase).toBeGreaterThanOrEqual(6);
     }
+  });
+});
+
+describe('audit records link to the record they concern (§15.3)', () => {
+  const id = '01a1aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee';
+  it('opens the page of each kind of record', () => {
+    expect(auditResourceHref({ type: 'visit', id })).toBe(`/visits/${id}`);
+    expect(auditResourceHref({ type: 'student', id })).toBe(`/students/${id}`);
+    expect(auditResourceHref({ type: 'group_swap', id })).toBe(`/group-swaps/${id}`);
+    expect(auditResourceHref({ type: 'program', id })).toBe('/settings');
+    expect(auditResourceHref({ type: 'attendance', id, visitId: 'v1' })).toBe(
+      '/visits/v1/attendance',
+    );
+  });
+  it('has no page for sessions, devices, reports or the log itself', () => {
+    for (const type of ['auth_session', 'webauthn_credential', 'report', 'audit_log'] as const)
+      expect(auditResourceHref({ type, id })).toBeNull();
+    expect(auditResourceHref({ type: 'attendance', id, visitId: null })).toBeNull();
+  });
+  it('covers every record type', () => {
+    for (const type of AUDIT_RESOURCE_TYPES)
+      expect(() => auditResourceHref({ type, id, visitId: 'v' })).not.toThrow();
   });
 });
 
