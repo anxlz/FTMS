@@ -2,31 +2,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
+    "src-tauri": {
+      "root": "apps/mobile/src-tauri",
+      "runtime": "rust"
+    },
     "api": {
-      "root": "api",
-      "framework": null,
-      "installCommand": "pnpm install --frozen-lockfile",
-      "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api",
-      "functions": {
-        "api/index.js": {
-          "includeFiles": "{dist/**,assets/**,../../node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/standard-fonts/**}",
-          "maxDuration": 30
-        }
-      }
+      "root": "apps/api",
+      "runtime": "nodejs"
     },
     "web": {
-      "root": "web",
-      "framework": "nextjs",
-      "installCommand": "pnpm install --frozen-lockfile",
-      "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/web",
-      "bindings": [
-        {
-          "type": "service",
-          "service": "api",
-          "format": "url",
-          "env": "API_URL"
-        }
-      ]
+      "root": "apps/web",
+      "framework": "nextjs"
     }
   },
   "rewrites": [
