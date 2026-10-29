@@ -2,18 +2,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
-    "api": {
-      "root": "api",
-      "framework": "nestjs",
-      "installCommand": "pnpm install --frozen-lockfile",
-      "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api",
-      "functions": {
-        "api/index.js": {
-          "includeFiles": "{dist/**,assets/**,../../node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/standard-fonts/**}",
-          "maxDuration": 30
-        }
-      }
-    },
+"api": {
+  "root": "api",
+  "framework": "nestjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api"
+}
     "web": {
       "root": "web",
       "framework": "nextjs",
