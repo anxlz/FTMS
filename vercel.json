@@ -1,10 +1,5 @@
 {
   "services": {
-    "src-tauri": {
-    "root": "mobile/src-tauri",
-    "runtime": "rust",
-    "entrypoint": "api/hello.rs"
-    },
     "api": {
       "root": "apps/api"
       "framework": "nestjs"
