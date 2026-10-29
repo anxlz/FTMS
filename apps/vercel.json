@@ -3,8 +3,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "src-tauri": {
-      "root": "mobile/src-tauri",
-      "runtime": "rust"
+    "root": "mobile/src-tauri",
+    "runtime": "rust",
+    "entrypoint": "api/hello.rs"
     },
     "api": {
       "root": "api",
