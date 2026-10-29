@@ -1,8 +1,9 @@
 {
   "services": {
     "src-tauri": {
-      "root": "apps/mobile/src-tauri",
-      "runtime": "rust"
+    "root": "mobile/src-tauri",
+    "runtime": "rust",
+    "entrypoint": "api/hello.rs"
     },
     "api": {
       "root": "apps/api"
