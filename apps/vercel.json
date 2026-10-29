@@ -3,11 +3,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "src-tauri": {
-      "root": "apps/mobile/src-tauri",
+      "root": "mobile/src-tauri",
       "runtime": "rust"
     },
     "api": {
-      "root": "apps/api",
+      "root": "api",
       "framework": null,
       "installCommand": "pnpm install --frozen-lockfile",
       "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api",
@@ -19,7 +19,7 @@
       }
     },
     "web": {
-      "root": "apps/web",
+      "root": "web",
       "framework": "nextjs",
       "installCommand": "pnpm install --frozen-lockfile",
       "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/web",
