@@ -2,12 +2,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
-"api": {
-  "root": "api",
-  "framework": "nestjs",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api"
-}
+   "api": {
+    "root": "api",
+    "framework": "nestjs",
+    "installCommand": "pnpm install --frozen-lockfile",
+    "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api"
+   }
     "web": {
       "root": "web",
       "framework": "nextjs",
