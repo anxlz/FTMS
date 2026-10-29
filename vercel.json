@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
+    "src-tauri": {
+      "root": "apps/mobile/src-tauri",
+      "runtime": "rust"
+    },
     "web": {
       "root": "apps/web",
       "framework": "nextjs"
