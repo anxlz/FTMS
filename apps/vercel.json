@@ -4,6 +4,7 @@
   "services": {
     "src-tauri": {
       "root": "mobile/src-tauri",
+      "framework": "tauri",
       "runtime": "rust"
     },
     "api": {
