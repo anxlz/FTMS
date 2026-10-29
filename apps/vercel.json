@@ -8,7 +8,7 @@
     },
     "api": {
       "root": "api",
-      "framework": null,
+      "framework": "nestjs",
       "installCommand": "pnpm install --frozen-lockfile",
       "buildCommand": "cd ../.. && pnpm turbo run build --filter=@ftms/api",
       "functions": {
