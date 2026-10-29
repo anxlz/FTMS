@@ -1,3 +1,4 @@
+
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
@@ -5,12 +6,22 @@
       "root": "apps/mobile/src-tauri",
       "runtime": "rust"
     },
+    "api": {
+      "root": "apps/api",
+      "runtime": "nodejs"
+    },
     "web": {
       "root": "apps/web",
       "framework": "nextjs"
     }
   },
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "api"
+      }
+    },
     {
       "source": "/(.*)",
       "destination": {
