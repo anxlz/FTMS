@@ -6,6 +6,7 @@
     },
     "api": {
       "root": "apps/api"
+      "framework": "nestjs"
     },
     "web": {
       "root": "apps/web",
