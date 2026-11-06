@@ -1,0 +1,88 @@
+
+name: FTMS Android Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build Android APK and AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure FTMS URL
+        working-directory: apps/mobile
+        run: node scripts/configure.mjs
+        env:
+          FTMS_WEB_URL: ${{ vars.FTMS_WEB_URL }}
+
+      - name: Initialize Android
+        run: pnpm --filter @ftms/mobile android:init
+
+      - name: Build APK and AAB
+        run: pnpm --filter @ftms/mobile android:build
+        env:
+          FTMS_WEB_URL: ${{ vars.FTMS_WEB_URL }}
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mapfile -d '' files < <(
+            find apps/mobile/src-tauri/gen/android/app/build/outputs \
+              -type f \( -name "*.apk" -o -name "*.aab" \) -print0
+          )
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No Android packages found."
+            exit 1
+          fi
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "FTMS Android $GITHUB_REF_NAME" \
+              --generate-notes
+          fi
