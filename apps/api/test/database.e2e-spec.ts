@@ -48,7 +48,7 @@ describe('Database structure (real Postgres)', () => {
     const rows = await prisma.permission.findMany({ orderBy: { key: 'asc' } });
     const expected = Object.entries(PERMISSIONS)
       .map(([key, p]) => ({ key, grantable: p.grantable, description: p.description }))
-      .sort((a, b) => a.key.localeCompare(b.key));
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     expect(rows).toEqual(expected);
   });
 
